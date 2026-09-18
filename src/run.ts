@@ -62,7 +62,7 @@ async function runStep(options: RunOptions, step: Step, report: RunReport): Prom
   const history: HistoryEntry[] = [];
   let actions = 0;
   let refusalsInRow = 0;
-  let lastFingerprint: string | undefined;
+  let before: Snapshot | undefined;
 
   const countJev = (usage: { input_tokens: number; output_tokens: number }) => {
     report.usage.jevRequests++;
@@ -88,15 +88,17 @@ async function runStep(options: RunOptions, step: Step, report: RunReport): Prom
 
     const state = await settledSnapshot(page);
     const previous = history.at(-1);
-    if (previous && previous.pageChanged === null) {
-      previous.pageChanged = state.fingerprint !== lastFingerprint;
-      turns.at(-1)!.pageChanged = previous.pageChanged;
+    if (previous && previous.pageChanged === null && before) {
+      const changes = textChanges(before.text, state.text);
+      previous.pageChanged = state.fingerprint !== before.fingerprint || changes !== undefined;
+      if (changes) previous.changes = changes;
+      Object.assign(turns.at(-1)!, { pageChanged: previous.pageChanged, ...(changes && { changes }) });
     }
     const stuck = history.slice(-limits.stuckActions);
     if (stuck.length === limits.stuckActions && stuck.every((h) => h.operation !== "WAIT" && h.pageChanged === false)) {
       return end({ status: "blocked", reason: `${limits.stuckActions} actions in a row did not change the page.` });
     }
-    lastFingerprint = state.fingerprint;
+    before = state;
 
     const decision = await decide(jev, state, step.intent, history);
     countJev(decision.usage);
@@ -185,6 +187,20 @@ async function runStep(options: RunOptions, step: Step, report: RunReport): Prom
   }
 }
 
+const CHANGE_LINES = 8;
+const CHANGE_LINE_CHARS = 120;
+
+/** The page text lines that are only in `before` (removed) and only in `after` (added). */
+function textChanges(before: string, after: string) {
+  const beforeLines = new Set(before.split("\n"));
+  const afterLines = new Set(after.split("\n"));
+  const pick = (lines: Set<string>, other: Set<string>) =>
+    [...lines].filter((line) => !other.has(line)).slice(0, CHANGE_LINES).map((line) => line.slice(0, CHANGE_LINE_CHARS));
+  const removed = pick(beforeLines, afterLines);
+  const added = pick(afterLines, beforeLines);
+  return removed.length || added.length ? { removed, added } : undefined;
+}
+
 function turnFor(n: number, state: Snapshot, decision: Decision): Turn {
   return {
     n,
@@ -205,6 +221,7 @@ function turnFor(n: number, state: Snapshot, decision: Decision): Turn {
       answers: decision.answers,
       latencyMs: decision.latencyMs,
       usage: decision.usage,
+      request: decision.request,
     },
     outcome: "acted",
     label: null,

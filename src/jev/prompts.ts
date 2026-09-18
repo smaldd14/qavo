@@ -9,8 +9,11 @@ Do not toggle a checkbox, switch, or radio that is already in the requested stat
 If a Search, Save, or Submit control is visible and the required fields are ready, CLICK it.
 WAIT only when the needed control is absent or disabled, or submitted results are still loading.
 Recent WAIT actions are not evidence of loading. Prefer a useful visible control over WAIT.
-DONE requires visible evidence that the step is complete. BLOCKED means no offered operation can make progress,
-or the page shows an error that stops the step.`;
+DONE requires evidence that the step is complete, from the current page and the recent actions together.
+A save, submit, or delete often moves the page to the next item or to another view. When the step's last required
+action is in the recent actions with page_changed true, and the page shows no error, choose DONE.
+Do not repeat the step on the next item. BLOCKED means the step is not complete and no offered operation can
+make progress, or the page shows an error that stops the step.`;
 
 export const TARGET_RULES = `Choose the best element for the operation named in this question, as if that operation runs next.
 Another question decides which operation runs. Use the step, the field values, the element context, and the recent actions.

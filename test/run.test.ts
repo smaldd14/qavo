@@ -147,10 +147,20 @@ describe("runScenario", () => {
       url: page.url(),
       steps: [{ intent: "Save the first account and move to the next", expect: "The page shows 21 Aberdeen Ave", actionLimit: 3 }],
     };
-    const { jev } = scriptedJev([{ operation: "CLICK", target: "Save and next" }, { operation: "DONE" }, { expect: 0.9 }]);
+    const { jev, requests } = scriptedJev([{ operation: "CLICK", target: "Save and next" }, { operation: "DONE" }, { expect: 0.9 }]);
     const { report } = await run(page, scenario, jev);
     expect(report.status).toBe("pass");
     expect(await page.textContent("h2")).toBe("21 Aberdeen Ave");
+
+    // The decision after the save sees what the save changed. The next item alone does not show that the step is done.
+    const [recent] = (requests[1]!.state as { recent_actions: unknown[] }).recent_actions;
+    expect(recent).toEqual({
+      operation: "CLICK",
+      element: expect.stringContaining("Save and next"),
+      page_changed: true,
+      page_changes: { removed: ["2 left", "112 Automotive Blvd"], added: ["1 left", "21 Aberdeen Ave"] },
+    });
+    expect(report.steps[0]!.turns[0]!.decision.request).toEqual(requests[0]);
   });
 
   test("fails when the expect check says no", async () => {
@@ -196,10 +206,9 @@ describe("runScenario", () => {
   });
 
   test("is blocked when actions do not change the page", async () => {
-    const page = await fixtures.open("table.html");
-    await page.evaluate(`document.querySelectorAll("button").forEach((b) => b.replaceWith(b.cloneNode(true)))`);
-    const scenario: Scenario = { name: "stuck", url: page.url(), steps: [{ intent: "Edit WO-1", actionLimit: 10 }] };
-    const { jev } = scriptedJev(Array.from({ length: 3 }, () => ({ operation: "CLICK", target: "Delete WO-1" })));
+    const page = await fixtures.open("hidden.html");
+    const scenario: Scenario = { name: "stuck", url: page.url(), steps: [{ intent: "Press the button", actionLimit: 10 }] };
+    const { jev } = scriptedJev(Array.from({ length: 3 }, () => ({ operation: "CLICK", target: "Visible button" })));
     const { report } = await run(page, scenario, jev);
     expect(report).toMatchObject({ status: "blocked", reason: "Step 1: 3 actions in a row did not change the page." });
   });

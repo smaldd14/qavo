@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Usage } from "@typesafe-ai/sdk";
+import type { SystemOneRequest, Usage } from "@typesafe-ai/sdk";
 import type { Operation } from "./browser/snapshot.ts";
 import type { ChoiceAnswer } from "./jev/answers.ts";
 import type { Control } from "./jev/decide.ts";
@@ -21,12 +21,15 @@ export interface Turn {
     answers: { operation: ChoiceAnswer; target?: ChoiceAnswer };
     latencyMs: number;
     usage: Usage;
+    /** The exact Jev request. `scripts/replay-turn.ts` sends it again. */
+    request: SystemOneRequest;
   };
   value?: { text: string; source: "data" | "model"; key?: string; model?: string; answer?: ChoiceAnswer; latencyMs: number };
   outcome: "acted" | "refused" | "done" | "blocked" | "unclear" | "no_value";
   refusal?: string;
   screenshot?: string;
   pageChanged?: boolean;
+  changes?: { removed: string[]; added: string[] };
   /** For Stage 0: set by hand to "correct" or "wrong" after a review of the screenshot. */
   label: null | "correct" | "wrong";
 }

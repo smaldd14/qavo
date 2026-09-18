@@ -1,4 +1,4 @@
-import { choice, type Usage } from "@typesafe-ai/sdk";
+import { choice, type SystemOneRequest, type Usage } from "@typesafe-ai/sdk";
 import type { Element, Operation, Snapshot } from "../browser/snapshot.ts";
 import { parseChoice, type ChoiceAnswer, type Jev } from "./answers.ts";
 import { OPERATION_RULES, TARGET_RULES } from "./prompts.ts";
@@ -11,6 +11,8 @@ export interface HistoryEntry {
   element?: string;
   text?: string;
   pageChanged: boolean | null;
+  /** Page text lines that the action removed and added. Evidence of what the action did. */
+  changes?: { removed: string[]; added: string[] };
 }
 
 export interface Target {
@@ -25,6 +27,7 @@ export type Decision = {
   model: string;
   usage: Usage;
   latencyMs: number;
+  request: SystemOneRequest;
 } & ({ operation: Operation; target: Target } | { operation: Control });
 
 const OPERATION_DESCRIPTIONS: Record<Operation | Control, string> = {
@@ -107,6 +110,7 @@ export function buildRequest(page: Snapshot, intent: string, history: HistoryEnt
       ...(h.element && { element: h.element }),
       ...(h.text !== undefined && { text: h.text }),
       page_changed: h.pageChanged,
+      ...(h.changes && { page_changes: h.changes }),
     })),
   };
   return { request: { state, questions }, operations, targets };
@@ -120,7 +124,7 @@ export async function decide(jev: Jev, page: Snapshot, intent: string, history: 
   const latencyMs = Math.round(performance.now() - started);
   const operationAnswer = parseChoice(result.answers.operation, operations, "operation");
   const operation = operationAnswer.choice;
-  const common = { confidence: operationAnswer.confidence, model: result.model, usage: result.usage, latencyMs };
+  const common = { confidence: operationAnswer.confidence, model: result.model, usage: result.usage, latencyMs, request };
   if (operation !== "CLICK" && operation !== "TYPE_TEXT" && operation !== "SELECT") {
     return { ...common, operation, answers: { operation: operationAnswer } };
   }
