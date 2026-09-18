@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>City search</title>
+<style>#suggestions:empty { display: none } [role=option] { padding: 4px; cursor: pointer }</style></head>
+<body>
+  <label for="city">City</label>
+  <input id="city" role="combobox" aria-autocomplete="list" aria-controls="suggestions" aria-expanded="false" autocomplete="off">
+  <ul id="suggestions" role="listbox"></ul>
+  <p id="chosen">No city chosen</p>
+  <script>
+    const cities = ["Lisbon", "London", "Lyon", "Madrid", "Porto"];
+    const input = document.getElementById("city");
+    const list = document.getElementById("suggestions");
+    input.addEventListener("input", () => {
+      const query = input.value.trim().toLowerCase();
+      // Suggestions arrive after a short delay, like a network lookup.
+      setTimeout(() => {
+        const matches = query ? cities.filter((c) => c.toLowerCase().startsWith(query)) : [];
+        list.innerHTML = matches.map((c) => `<li role="option" aria-selected="false">${c}</li>`).join("");
+        input.setAttribute("aria-expanded", String(matches.length > 0));
+        list.querySelectorAll("li").forEach((li) => li.addEventListener("click", () => {
+          input.value = li.textContent;
+          document.getElementById("chosen").textContent = "Chosen: " + li.textContent;
+          list.innerHTML = "";
+          input.setAttribute("aria-expanded", "false");
+        }));
+      }, 60);
+    });
+  </script>
+</body>
+</html>

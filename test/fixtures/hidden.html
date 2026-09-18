@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Hidden controls</title>
+<style>.gone { display: none } .invisible { visibility: hidden } .clear { opacity: 0 }
+</style></head>
+<body>
+  <button type="button" id="visible">Visible button</button>
+  <button type="button" class="gone">Display none button</button>
+  <button type="button" class="invisible">Visibility hidden button</button>
+  <button type="button" class="clear">Transparent button</button>
+  <button type="button" hidden>Hidden attribute button</button>
+  <div aria-hidden="true"><button type="button">Aria hidden button</button></div>
+  <div inert><button type="button">Inert button</button></div>
+  <button type="button" disabled>Disabled button</button>
+  <button type="button" aria-disabled="true">Aria disabled button</button>
+  <fieldset disabled><input aria-label="Disabled fieldset input"></fieldset>
+  <div style="position: relative; height: 40px">
+    <button type="button" id="under">Covered button</button>
+    <div style="position: absolute; inset: 0; background: white"></div>
+  </div>
+  <div style="height: 2000px"></div>
+  <button type="button" id="below">Below the fold</button>
+</body>
+</html>

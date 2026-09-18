@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Tenants</title></head>
+<body>
+  <h1>Tenants</h1>
+  <button type="button" id="open">Add tenant</button>
+  <a href="#help">Help</a>
+  <dialog id="dialog" aria-labelledby="dialog-title">
+    <h2 id="dialog-title">New tenant</h2>
+    <form method="dialog" id="tenant-form">
+      <label for="tenant-name">Tenant name</label>
+      <input id="tenant-name">
+      <button value="cancel" formnovalidate>Cancel</button>
+      <button value="save" id="save">Save tenant</button>
+    </form>
+  </dialog>
+  <ul id="tenants"></ul>
+  <script>
+    const dialog = document.getElementById("dialog");
+    document.getElementById("open").onclick = () => dialog.showModal();
+    dialog.addEventListener("close", () => {
+      if (dialog.returnValue !== "save") return;
+      const li = document.createElement("li");
+      li.textContent = document.getElementById("tenant-name").value;
+      document.getElementById("tenants").append(li);
+    });
+  </script>
+</body>
+</html>

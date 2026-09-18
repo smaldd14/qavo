@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Work orders</title></head>
+<body>
+  <h1>Work orders</h1>
+  <table>
+    <thead><tr><th>ID</th><th>Title</th><th>Status</th><th>Actions</th></tr></thead>
+    <tbody>
+      <tr><td>WO-1</td><td>Fix leaking faucet</td><td>Open</td>
+        <td><button type="button">Edit</button><button type="button" aria-label="Delete WO-1"><svg class="lucide lucide-trash-2" width="16" height="16"><rect width="16" height="16"/></svg></button></td></tr>
+      <tr><td>WO-2</td><td>Replace air filter</td><td>Closed</td>
+        <td><button type="button">Edit</button><button type="button"><svg class="lucide lucide-trash-2" width="16" height="16"><rect width="16" height="16"/></svg></button></td></tr>
+    </tbody>
+  </table>
+  <p id="log"></p>
+  <script>
+    document.querySelectorAll("tbody button").forEach((b) => b.addEventListener("click", () => {
+      document.getElementById("log").textContent = b.closest("tr").cells[0].textContent + ": " + (b.textContent || "delete");
+    }));
+  </script>
+</body>
+</html>

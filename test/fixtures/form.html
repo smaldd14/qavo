@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Contact form</title></head>
+<body>
+  <h1>Contact us</h1>
+  <form id="contact">
+    <label for="name">Full name</label>
+    <input id="name" name="name" type="text">
+    <label>Email <input id="email" name="email" type="email" placeholder="you@example.com"></label>
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password">
+    <input id="account" aria-label="Account number" value="A-100" readonly>
+    <label><input id="newsletter" type="checkbox"> Send me the newsletter</label>
+    <fieldset>
+      <legend>Plan</legend>
+      <label><input type="radio" name="plan" value="basic" checked> Basic</label>
+      <label><input type="radio" name="plan" value="pro"> Pro</label>
+    </fieldset>
+    <label for="topic">Topic</label>
+    <select id="topic">
+      <option value="">Choose a topic</option>
+      <option value="billing">Billing</option>
+      <option value="support">Support</option>
+      <option value="legacy" disabled>Legacy</option>
+    </select>
+    <label for="message">Message</label>
+    <textarea id="message"></textarea>
+    <input type="hidden" name="token" value="secret">
+    <button type="submit">Send message</button>
+  </form>
+  <p id="status"></p>
+  <script>
+    document.getElementById("contact").onsubmit = (event) => {
+      event.preventDefault();
+      document.getElementById("status").textContent = "Thanks, " + document.getElementById("name").value + ". Message sent.";
+    };
+  </script>
+</body>
+</html>

@@ -55,7 +55,9 @@ A goal is a scenario with one step. A step doc is a scenario with many steps.
 
 v0 is in progress. See [docs/plan.md](docs/plan.md) for the iterations and [CONTEXT.md](CONTEXT.md) for the terms.
 
-The design is ported from [browser-use/jev-ultrafast](https://github.com/browser-use/jev-ultrafast) (MIT). qavo is a TypeScript rewrite, not a copy.
+## Inspiration
+
+qavo is inspired by [browser-use/jev-ultrafast](https://github.com/browser-use/jev-ultrafast) (MIT). That project showed that a browser agent can run on typed Jev choices: one operation head, one target head for each operation, and a small text model for field values. qavo ports these ideas to TypeScript and adds scenarios, `expect` checks, and QA reports. qavo does not copy its code.
 
 ## License
 
