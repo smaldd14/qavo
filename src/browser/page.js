@@ -140,6 +140,8 @@
     return !!hit && !e.contains(hit) && !(e.labels && [...e.labels].some((l) => l.contains(hit)));
   };
 
+  // Returns every listed control. `covered` controls stay in the fingerprint, so that an overlay
+  // that appears after a decision is refused as covered, not as a changed page.
   const readElements = () => {
     const modal = topModal();
     const elements = [];
@@ -153,7 +155,6 @@
       const { width, height } = center(e);
       if (width <= 0 || height <= 0) continue;
       if (role === "gridcell" && e.querySelector('button,[role="button"],a[href]')) continue;
-      if (isCovered(e)) continue;
       if (elements.length >= ELEMENT_LIMIT) {
         omitted++;
         continue;
@@ -179,7 +180,7 @@
       } else {
         element.operations = ["CLICK"];
       }
-      elements.push(element);
+      elements.push({ element, covered: isCovered(e) });
     }
     return { elements, omitted };
   };
@@ -215,7 +216,7 @@
       .map((e) => [indexOf(e), e.value, e.checked, e.selectedIndex]);
 
   const fingerprintOf = (elements) =>
-    hash(JSON.stringify([location.href, formValues(), elements]));
+    hash(JSON.stringify([location.href, formValues(), elements.map(({ element }) => element)]));
 
   const snapshot = () => {
     const { elements, omitted } = readElements();
@@ -223,22 +224,76 @@
       url: location.href,
       title: document.title,
       text: readText(),
-      elements,
+      elements: elements.filter(({ covered }) => !covered).map(({ element }) => element),
       omitted,
       scroll: { y: Math.round(scrollY), max: Math.max(0, document.documentElement.scrollHeight - innerHeight) },
       fingerprint: fingerprintOf(elements),
     };
   };
 
+  const DATE_TYPES = ["date", "time", "datetime-local", "month", "week"];
+
+  // Checks one stored node just before input. Returns the point to click, or the reason to refuse.
+  const prepare = (index, operation, optionValue) => {
+    const e = nodes.get(index);
+    if (!e?.isConnected) return { refused: "missing" };
+    if (!isVisible(e)) return { refused: "hidden" };
+    if (isDisabled(e)) return { refused: "disabled" };
+    if (operation === "TYPE_TEXT" && !isEditable(e, roleOf(e))) return { refused: "not_editable" };
+    if (operation === "SELECT") {
+      const option = e.tagName === "SELECT" && [...e.options].find((o) => o.value === optionValue);
+      if (!option || option.disabled || option.closest("optgroup[disabled]")) return { refused: "option" };
+    }
+    if (!inViewport(center(e))) e.scrollIntoView({ block: "center", inline: "center" });
+    if (isCovered(e)) return { refused: "covered" };
+    const { x, y } = center(e);
+    const link = e.closest("a[href]");
+    return {
+      x,
+      y,
+      href: link ? link.href : null,
+      setValue: e.tagName === "INPUT" && DATE_TYPES.includes(e.type),
+    };
+  };
+
+  const setValue = (index, value) => {
+    const e = nodes.get(index);
+    const prototype = e.tagName === "SELECT" ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(prototype, "value").set.call(e, value);
+    e.dispatchEvent(new Event("input", { bubbles: true }));
+    e.dispatchEvent(new Event("change", { bubbles: true }));
+  };
+
+  // Waits at least 2 animation frames or 50 ms. After text in a combobox, waits up to 200 ms for suggestions.
+  const settle = (index, typed) =>
+    new Promise((resolve) => {
+      const field = nodes.get(index);
+      const awaitSuggestions = typed && field?.getAttribute("role") === "combobox";
+      let frames = 0;
+      let finished = false;
+      const finish = () => {
+        finished = true;
+        resolve();
+      };
+      setTimeout(finish, awaitSuggestions ? 200 : 50);
+      const suggestionsVisible = () => {
+        const ids = (field.getAttribute("aria-controls") || field.getAttribute("aria-owns") || "").split(/\s+/).filter(Boolean);
+        const roots = ids.length ? ids.map((id) => document.getElementById(id)).filter(Boolean) : [document];
+        return roots.some((root) => [...root.querySelectorAll('[role="option"]')].some(isVisible));
+      };
+      const tick = () => {
+        if (finished) return;
+        if (++frames >= 2 && (!awaitSuggestions || suggestionsVisible())) finish();
+        else requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+
   window.__qavo = {
-    nodes,
     snapshot,
     fingerprint: () => fingerprintOf(readElements().elements),
-    isVisible,
-    isDisabled,
-    isEditable: (e) => isEditable(e, roleOf(e)),
-    isCovered,
-    center,
-    inViewport,
+    prepare,
+    setValue,
+    settle,
   };
 })();

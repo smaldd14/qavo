@@ -17,7 +17,7 @@
       <label><input type="radio" name="plan" value="pro"> Pro</label>
     </fieldset>
     <label for="topic">Topic</label>
-    <select id="topic">
+    <select id="topic" onchange="document.getElementById('status').textContent = 'Topic: ' + this.value">
       <option value="">Choose a topic</option>
       <option value="billing">Billing</option>
       <option value="support">Support</option>
@@ -29,6 +29,7 @@
     <button type="submit">Send message</button>
   </form>
   <p id="status"></p>
+  <a href="https://example.com/terms">Terms</a>
   <script>
     document.getElementById("contact").onsubmit = (event) => {
       event.preventDefault();
