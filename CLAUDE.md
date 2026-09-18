@@ -26,3 +26,5 @@ Read `CONTEXT.md` for the terms. Read `docs/plan.md` for the current iteration.
 
 - `pnpm test` runs offline. Tests use `test/fixtures/*.html` and a stubbed Jev client.
 - `pnpm typecheck` and `pnpm knip` must be clean before a commit.
+- Static fixtures draw the page before `goto` returns. Real apps do not: React draws after load, then shows a skeleton while it fetches data. `test/fixtures/spa.html` copies this (empty root, skeleton, then a 400 ms fetch). A change to the loop, the snapshot, or the waits needs a test on `spa.html`, not only on static fixtures.
+- An iteration is not done until one run passes against a real app (pm-agent locally). Fixture tests alone missed the first-snapshot bug.

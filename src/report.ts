@@ -12,6 +12,8 @@ export interface Turn {
   n: number;
   url: string;
   fingerprint: string;
+  /** What Jev saw: the control count and the start of the page text. */
+  page: { title: string; elements: number; text: string };
   decision: {
     operation: Operation | Control;
     target?: { label: string; index: number; name: string; option?: string };

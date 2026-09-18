@@ -140,6 +140,19 @@ describe("runScenario", () => {
     ]);
   });
 
+  test("waits for an app that renders after load and fetches its data", async () => {
+    const page = await fixtures.open("spa.html");
+    const scenario: Scenario = {
+      name: "spa",
+      url: page.url(),
+      steps: [{ intent: "Save the first account and move to the next", expect: "The page shows 21 Aberdeen Ave", actionLimit: 3 }],
+    };
+    const { jev } = scriptedJev([{ operation: "CLICK", target: "Save and next" }, { operation: "DONE" }, { expect: 0.9 }]);
+    const { report } = await run(page, scenario, jev);
+    expect(report.status).toBe("pass");
+    expect(await page.textContent("h2")).toBe("21 Aberdeen Ave");
+  });
+
   test("fails when the expect check says no", async () => {
     const page = await fixtures.open("hotel.html");
     const { jev } = scriptedJev([{ operation: "DONE" }, { expect: 0.05 }]);
@@ -166,8 +179,11 @@ describe("runScenario", () => {
   test("is blocked when Jev chooses BLOCKED", async () => {
     const page = await fixtures.open("hotel.html");
     const { jev } = scriptedJev([{ operation: "BLOCKED" }]);
-    const { report } = await run(page, scenarioFrom("fixture-hotel.json"), jev);
+    const { report, dir } = await run(page, scenarioFrom("fixture-hotel.json"), jev);
     expect(report).toMatchObject({ status: "blocked", reason: "Step 1: Jev chose BLOCKED." });
+    const turn = report.steps[0]!.turns[0]!;
+    expect(existsSync(join(dir, turn.screenshot!))).toBe(true);
+    expect(turn.page).toMatchObject({ title: "Harbor Stays", elements: 8 });
   });
 
   test("is blocked at the action limit", async () => {

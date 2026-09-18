@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { noul } from "@typesafe-ai/sdk";
 import type { Page } from "playwright-core";
 import { act, isAllowedUrl, Refused, type Action } from "./browser/act.ts";
-import { snapshot, type Snapshot } from "./browser/snapshot.ts";
+import { settledSnapshot, trackRequests, type Snapshot } from "./browser/snapshot.ts";
 import { parseNoul, type Jev } from "./jev/answers.ts";
 import { decide, type Decision, type HistoryEntry } from "./jev/decide.ts";
 import { EXPECT_RULES } from "./jev/prompts.ts";
@@ -40,6 +40,7 @@ export async function runScenario(options: RunOptions): Promise<RunReport> {
     usage: { jevRequests: 0, jevInputTokens: 0, jevOutputTokens: 0, textModelCalls: 0 },
     steps: [],
   };
+  trackRequests(page);
   await page.goto(url);
   for (const step of scenario.steps) {
     const stepReport = await runStep(options, step, report);
@@ -85,7 +86,7 @@ async function runStep(options: RunOptions, step: Step, report: RunReport): Prom
       return end({ status: "blocked", reason: `The page left allowHosts: ${page.url()}` });
     }
 
-    const state = await snapshot(page);
+    const state = await settledSnapshot(page);
     const previous = history.at(-1);
     if (previous && previous.pageChanged === null) {
       previous.pageChanged = state.fingerprint !== lastFingerprint;
@@ -104,6 +105,7 @@ async function runStep(options: RunOptions, step: Step, report: RunReport): Prom
 
     if (decision.confidence < limits.confidence) {
       turn.outcome = "unclear";
+      turn.screenshot = await screenshot(page, options.dir, report, turns.length);
       return end({
         status: "unclear",
         reason: `Confidence ${decision.confidence.toFixed(2)} for ${decision.operation} is below ${limits.confidence}.`,
@@ -111,6 +113,7 @@ async function runStep(options: RunOptions, step: Step, report: RunReport): Prom
     }
     if (decision.operation === "BLOCKED") {
       turn.outcome = "blocked";
+      turn.screenshot = await screenshot(page, options.dir, report, turns.length);
       return end({ status: "blocked", reason: "Jev chose BLOCKED." });
     }
     if (decision.operation === "DONE") {
@@ -146,6 +149,7 @@ async function runStep(options: RunOptions, step: Step, report: RunReport): Prom
       } catch (error) {
         if (!(error instanceof NoValue)) throw error;
         turn.outcome = "no_value";
+        turn.screenshot = await screenshot(page, options.dir, report, turns.length);
         return end({ status: "blocked", reason: error.message });
       }
     } else if (decision.operation === "SELECT") {
@@ -186,6 +190,7 @@ function turnFor(n: number, state: Snapshot, decision: Decision): Turn {
     n,
     url: state.url,
     fingerprint: state.fingerprint,
+    page: { title: state.title, elements: state.elements.length, text: state.text.slice(0, 500) },
     decision: {
       operation: decision.operation,
       ...("target" in decision && {

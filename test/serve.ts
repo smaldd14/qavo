@@ -8,12 +8,17 @@ const FIXTURES = new URL("./fixtures/", import.meta.url).pathname;
 /** Serves test/fixtures over HTTP on 127.0.0.1. Returns the base URL and a close function. */
 export async function serveFixtures(port = 0) {
   const server = createServer(async (request, response) => {
-    const path = new URL(request.url ?? "/", "http://localhost").pathname;
+    let path = new URL(request.url ?? "/", "http://localhost").pathname;
+    // /slow/<file> answers after 400 ms, like an API call.
+    if (path.startsWith("/slow/")) {
+      path = path.slice("/slow".length);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
     const file = join(FIXTURES, path === "/" ? "index.html" : path);
     if (!file.startsWith(FIXTURES)) return response.writeHead(403).end();
     const body = await readFile(file).catch(() => null);
     if (!body) return response.writeHead(404).end("Not found");
-    response.writeHead(200, { "content-type": file.endsWith(".html") ? "text/html; charset=utf-8" : "text/plain" });
+    response.writeHead(200, { "content-type": file.endsWith(".html") ? "text/html; charset=utf-8" : file.endsWith(".json") ? "application/json" : "text/plain" });
     response.end(body);
   });
   await new Promise<void>((resolve) => server.listen(port, "127.0.0.1", resolve));
