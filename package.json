@@ -1,0 +1,32 @@
+{
+  "name": "qavo",
+  "version": "0.0.0",
+  "description": "A QA agent that drives a real browser with Jev choices.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "qavo": "./bin/qavo.js"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "qavo": "tsx src/cli.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "knip": "knip"
+  },
+  "dependencies": {
+    "@typesafe-ai/sdk": "0.6.0",
+    "playwright-core": "^1.63.0",
+    "tsx": "^4.23.13",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.1",
+    "knip": "^6.36.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1"
+  },
+  "packageManager": "pnpm@12.4.2"
+}
