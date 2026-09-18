@@ -41,7 +41,7 @@ const OPERATION_DESCRIPTIONS: Record<Operation | Control, string> = {
 const HISTORY_LIMIT = 10;
 
 /** Offered target labels for each operation. SELECT targets are `<index>:<option position>`. */
-export function targetsFor(elements: Element[]): Partial<Record<Operation, Target[]>> {
+function targetsFor(elements: Element[]): Partial<Record<Operation, Target[]>> {
   const targets: Partial<Record<Operation, Target[]>> = {};
   for (const element of elements) {
     for (const operation of element.operations) {

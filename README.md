@@ -24,6 +24,7 @@ Each run writes `.qavo/runs/<id>/report.json` and a screenshot after each action
 pnpm install
 pnpm exec playwright-core install chromium
 cp .env.example .env   # add TYPESAFE_API_KEY, and a text model key if steps need generated values
+pnpm fixtures          # in a second terminal: serves test/fixtures on http://127.0.0.1:4173
 pnpm qavo run examples/fixture-hotel.json --headed
 ```
 
@@ -33,12 +34,23 @@ To run as a logged-in user, save a session once, then point `qavo.config.ts` (or
 pnpm qavo login http://localhost:5173 --out .qavo/admin.json
 ```
 
+`qavo run` looks for `qavo.config.ts` in the scenario's folder and its parents. Reports go to `.qavo/runs/` next to that config:
+
+```ts
+export default {
+  url: "http://localhost:5173",   // scenario URLs can be paths, for example "/work-orders"
+  storageState: ".qavo/admin.json",
+  allowHosts: ["localhost:5173", "127.0.0.1:54321"],
+  limits: { confidence: 0.5, expectPass: 0.7, expectFail: 0.3, stepSeconds: 120 },
+};
+```
+
 A scenario is JSON:
 
 ```json
 {
   "name": "Find a free-cancellation stay in Lisbon",
-  "url": "http://localhost:4173/hotel.html",
+  "url": "http://127.0.0.1:4173/hotel.html",
   "steps": [
     {
       "intent": "Search for stays in Lisbon with free cancellation",

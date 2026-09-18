@@ -14,7 +14,8 @@
     "qavo": "tsx src/cli.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "knip": "knip"
+    "knip": "knip",
+    "fixtures": "tsx scripts/serve-fixtures.ts"
   },
   "dependencies": {
     "@typesafe-ai/sdk": "0.6.0",

@@ -1,0 +1,11 @@
+{
+  "name": "Find a Lisbon stay with free cancellation",
+  "url": "http://127.0.0.1:4173/hotel.html",
+  "steps": [
+    {
+      "intent": "Search for stays in Lisbon that have free cancellation",
+      "data": { "destination": "Lisbon" },
+      "expect": "The results list only Lisbon stays with free cancellation"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "name": "Send a billing message",
+  "url": "http://127.0.0.1:4173/form.html",
+  "steps": [
+    { "intent": "Enter the full name", "data": { "full name": "Ada Lovelace" }, "actionLimit": 3 },
+    { "intent": "Choose Billing as the topic", "actionLimit": 3 },
+    {
+      "intent": "Write a short message that asks for a copy of the last invoice, then send the form",
+      "expect": "The page thanks Ada and says the message was sent",
+      "actionLimit": 5
+    }
+  ]
+}

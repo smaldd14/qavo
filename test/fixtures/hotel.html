@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Harbor Stays</title>
+  <style>
+    body { font: 15px system-ui, sans-serif; margin: 0; color: #1f2a2e; background: #f7f7f4 }
+    header, main { padding: 20px 40px }
+    header { background: #1f3a44; color: white }
+    form { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; margin-bottom: 20px }
+    label { display: grid; gap: 4px }
+    .card { background: white; border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 8px 0; display: flex; justify-content: space-between; align-items: center }
+  </style>
+</head>
+<body>
+  <header><strong>Harbor Stays</strong> · Small hotels by the water</header>
+  <main id="app"></main>
+  <script>
+    const hotels = [
+      { name: "Alfama Rooms", city: "Lisbon", flexible: true, price: 130 },
+      { name: "Tagus View", city: "Lisbon", flexible: false, price: 95 },
+      { name: "Ribeira House", city: "Porto", flexible: true, price: 110 },
+      { name: "Nyhavn Loft", city: "Copenhagen", flexible: true, price: 220 },
+    ];
+    const filters = { city: "", flexible: false, sort: "price", searched: false };
+    const app = document.getElementById("app");
+
+    function home() {
+      document.title = "Harbor Stays";
+      app.innerHTML = `
+        <h1>Find a stay</h1>
+        <form id="search">
+          <label>Destination <input id="destination" type="search" placeholder="City"></label>
+          <label>Sort by <select id="sort"><option value="price">Lowest price</option><option value="name">Name</option></select></label>
+          <label style="display:flex;gap:6px;align-items:center"><input id="flexible" type="checkbox"> Free cancellation</label>
+          <button type="submit">Search</button>
+        </form>
+        <p id="count"></p>
+        <div id="results"></div>`;
+      document.getElementById("destination").value = filters.city;
+      document.getElementById("flexible").checked = filters.flexible;
+      document.getElementById("sort").value = filters.sort;
+      document.getElementById("sort").onchange = (e) => { filters.sort = e.target.value; results(); };
+      document.getElementById("flexible").onchange = (e) => { filters.flexible = e.target.checked; results(); };
+      document.getElementById("search").onsubmit = (e) => {
+        e.preventDefault();
+        filters.city = document.getElementById("destination").value.trim();
+        filters.searched = true;
+        results();
+      };
+      results();
+    }
+
+    function results() {
+      const rows = hotels
+        .filter((h) => !filters.searched || !filters.city || h.city.toLowerCase() === filters.city.toLowerCase())
+        .filter((h) => !filters.flexible || h.flexible)
+        .sort((a, b) => filters.sort === "price" ? a.price - b.price : a.name.localeCompare(b.name));
+      document.getElementById("count").textContent =
+        `${rows.length} stays${filters.searched && filters.city ? " in " + filters.city : ""}${filters.flexible ? " with free cancellation" : ""}`;
+      const list = document.getElementById("results");
+      list.innerHTML = rows.map((h) => `
+        <div class="card">
+          <div><strong>${h.name}</strong><br>${h.city} · ${h.flexible ? "Free cancellation" : "Non-refundable"} · €${h.price} a night</div>
+          <button type="button" data-name="${h.name}">View</button>
+        </div>`).join("") || "<p>No stays match.</p>";
+      list.querySelectorAll("button").forEach((b) => b.onclick = () => detail(hotels.find((h) => h.name === b.dataset.name)));
+    }
+
+    function detail(hotel) {
+      document.title = `${hotel.name} · Harbor Stays`;
+      app.innerHTML = `
+        <button type="button" id="back">Back to results</button>
+        <h1>${hotel.name}</h1>
+        <p>${hotel.city} · €${hotel.price} a night · ${hotel.flexible ? "Free cancellation" : "Non-refundable"}</p>`;
+      document.getElementById("back").onclick = home;
+    }
+
+    home();
+  </script>
+</body>
+</html>
