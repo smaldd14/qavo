@@ -11,9 +11,10 @@ import { createRunDir, writeReport } from "./report.ts";
 import { runScenario } from "./run.ts";
 import { Config, Scenario } from "./scenario.ts";
 import { textModelFromEnv } from "./values.ts";
+import { parseUploadConfig, uploadRunArtifacts } from "./upload.ts";
 
 const USAGE = `Usage:
-  qavo run <scenario.json> [--headed] [--config qavo.config.ts] [--storage-state .qavo/role.json]
+  qavo run <scenario.json> [--headed] [--config qavo.config.ts] [--storage-state .qavo/role.json] [--out <directory>]
   qavo login <url> --out .qavo/<role>.json`;
 
 const CONFIG_NAMES = ["qavo.config.ts", "qavo.config.js"];
@@ -27,7 +28,8 @@ function findConfig(from: string): string | undefined {
   }
 }
 
-async function run(scenarioPath: string, options: { headed?: boolean; config?: string; storageState?: string }) {
+async function run(scenarioPath: string, options: { headed?: boolean; config?: string; storageState?: string; out?: string }) {
+  const upload = parseUploadConfig();
   const scenario = Scenario.parse(JSON.parse(await readFile(scenarioPath, "utf8")));
   const configPath = options.config ? resolve(options.config) : findConfig(dirname(scenarioPath));
   const config = Config.parse(configPath ? (await import(pathToFileURL(configPath).href)).default : {});
@@ -40,7 +42,7 @@ async function run(scenarioPath: string, options: { headed?: boolean; config?: s
   }
 
   const jev = new TypeSafeClient();
-  const { id, dir } = await createRunDir(join(baseDir, ".qavo"));
+  const { id, dir } = await createRunDir(options.out ? resolve(options.out) : undefined);
   const browser = await chromium.launch({ headless: !options.headed });
   try {
     const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, storageState });
@@ -66,6 +68,15 @@ async function run(scenarioPath: string, options: { headed?: boolean; config?: s
     console.log(`${report.status.toUpperCase()} ${scenario.name} in ${report.durationMs} ms, ${report.usage.jevRequests} Jev requests`);
     console.log(`Report: ${reportPath}`);
     process.exitCode = report.status === "pass" ? 0 : 1;
+    if (upload) {
+      try {
+        const location = await uploadRunArtifacts(dir, report, upload);
+        console.log(`Artifacts: ${location}`);
+      } catch {
+        console.error(`Artifact upload failed. Local report: ${reportPath}`);
+        process.exitCode = 2;
+      }
+    }
   } finally {
     await browser.close();
   }
@@ -100,7 +111,7 @@ const { positionals, values } = parseArgs({
 });
 const [command, target] = positionals;
 if (command === "run" && target) {
-  await run(target, { headed: values.headed, config: values.config, storageState: values["storage-state"] });
+  await run(target, { headed: values.headed, config: values.config, storageState: values["storage-state"], out: values.out });
 } else if (command === "login" && target && values.out) {
   await login(target, values.out);
 } else {

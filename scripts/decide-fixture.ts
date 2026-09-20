@@ -3,7 +3,7 @@
 import { existsSync } from "node:fs";
 import { TypeSafeClient } from "@typesafe-ai/sdk";
 import { chromium } from "playwright-core";
-import { snapshot } from "../src/browser/snapshot.ts";
+import { settledSnapshot, trackRequests } from "../src/browser/snapshot.ts";
 import { decide } from "../src/jev/decide.ts";
 import { serveFixtures } from "../test/serve.ts";
 
@@ -14,8 +14,9 @@ const server = await serveFixtures();
 const browser = await chromium.launch();
 try {
   const page = await browser.newPage();
+  trackRequests(page);
   await page.goto(`${server.url}/${fixture}`);
-  const state = await snapshot(page);
+  const state = await settledSnapshot(page);
   const decision = await decide(new TypeSafeClient(), state, intent, []);
   console.log(JSON.stringify({ intent, ...decision }, null, 2));
 } finally {

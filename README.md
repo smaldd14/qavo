@@ -16,7 +16,7 @@ For each step in a scenario:
 
 A typed value comes from `step.data` when Jev finds a matching key. Otherwise a small text model writes it. The report records the source of each value. Password fields never go to a model.
 
-Each run writes `.qavo/runs/<id>/report.json` and a screenshot after each action.
+Each run writes `report.json` and screenshots to a private temporary directory outside the checkout by default. The CLI prints the report path. Reports contain the exact decision requests and page-change evidence.
 
 ## Use
 
@@ -34,7 +34,7 @@ To run as a logged-in user, save a session once, then point `qavo.config.ts` (or
 pnpm qavo login http://localhost:5173 --out .qavo/admin.json
 ```
 
-`qavo run` looks for `qavo.config.ts` in the scenario's folder and its parents. Reports go to `.qavo/runs/` next to that config:
+`qavo run` looks for `qavo.config.ts` in the scenario's folder and its parents. Configuration does not determine the output directory:
 
 ```ts
 export default {
@@ -62,6 +62,28 @@ A scenario is JSON:
 ```
 
 A goal is a scenario with one step. A step doc is a scenario with many steps.
+
+## Artifact output
+
+Use `qavo run scenario.json --out /absolute/artifact-directory` for a persistent local destination. Each run creates `runs/<id>/` there. Without `--out`, the operating system can remove the temporary files later.
+
+For R2 uploads, set these environment variables through your CI secret store:
+
+| Variable | Value |
+| --- | --- |
+| `QAVO_S3_ENDPOINT` | The HTTPS S3 endpoint from your R2 account |
+| `QAVO_S3_BUCKET` | An existing private bucket |
+| `AWS_ACCESS_KEY_ID` | The bucket-scoped access key ID |
+| `AWS_SECRET_ACCESS_KEY` | The secret access key |
+| `QAVO_S3_REGION` | Optional; defaults to `auto` for R2 |
+| `QAVO_S3_PREFIX` | Optional relative object prefix, such as `qa/build-123` |
+| `AWS_SESSION_TOKEN` | Optional session token for compatible providers |
+
+Uploads are disabled when no `QAVO_S3_*` variables are set. Other S3-compatible providers require their endpoint and region.
+
+The CLI uploads only the report and its referenced screenshots. It uploads the report last and prints an `s3://` location. It does not create a bucket or change its access policy. Keep the destination private: reports and screenshots can contain application data.
+
+Local files remain after either upload success or failure. An upload failure returns exit code `2` without changing the QA result in the report. Without an upload error, exit code `0` means `pass`; `1` means `fail`, `blocked`, or `unclear`.
 
 ## Status
 

@@ -28,6 +28,6 @@
 - `blocked`: Jev chose `BLOCKED`, a guard refused too many times, the page stopped changing, or a limit was reached.
 - `unclear`: a Jev confidence was below the threshold, or the `expect` probability was between the pass and fail thresholds.
 
-**Run.** One execution of a scenario. It writes `.qavo/runs/<id>/report.json` and screenshots.
+**Run.** One execution of a scenario. It writes `report.json` and screenshots in a private temporary directory by default. `--out` selects a local root with `runs/<id>/` below it. Optional S3-compatible uploads copy only the report and its referenced screenshots. Output does not depend on the target repository.
 
 **allowHosts.** The hosts that the browser can visit. A navigation to another host stops the step as `blocked`.

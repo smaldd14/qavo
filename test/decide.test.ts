@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import type { SystemOneRequest } from "@typesafe-ai/sdk";
 import type { Snapshot } from "../src/browser/snapshot.ts";
 import type { Jev } from "../src/jev/answers.ts";
-import { buildRequest, decide } from "../src/jev/decide.ts";
+import { buildRequest, decide, HISTORY_LIMIT } from "../src/jev/decide.ts";
 
 const page: Snapshot = {
   url: "http://127.0.0.1/form.html",
@@ -67,7 +67,24 @@ describe("buildRequest", () => {
     expect(operations).not.toContain("SCROLL_DOWN");
   });
 
+  test("retains control state, operations, and select labels in the shared description", () => {
+    const { request } = buildRequest({
+      ...page,
+      elements: [{ ...page.elements[3]!, expanded: false, pressed: "mixed", selected: true, context: "Message details" }],
+    }, "Choose a topic", []);
+    expect(request.state.elements).toEqual([{
+      element: "[4] Topic", name: "Topic", role: "combobox", value: "Choose",
+      expanded: false, pressed: "mixed", selected: true, context: "Message details",
+      operations: ["SELECT"], options: ["4:1 Choose", "4:2 Billing"],
+    }]);
+    const target = request.questions.SELECT_target as { criteria: Record<string, unknown> };
+    expect(target.criteria["4:2"]).toMatchObject({
+      element: "[4:2] Topic → Billing", name: "Topic", expanded: false, pressed: "mixed", context: "Message details",
+    });
+  });
+
   test("keeps only the last 10 actions", () => {
+    expect(HISTORY_LIMIT).toBe(10);
     const history = Array.from({ length: 15 }, (_, i) => ({ operation: "WAIT" as const, text: String(i), pageChanged: false }));
     const { request } = buildRequest(page, "x", history);
     const recent = (request.state as { recent_actions: { text: string }[] }).recent_actions;

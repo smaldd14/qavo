@@ -4,7 +4,7 @@ import type { Page } from "playwright-core";
 import { act, isAllowedUrl, Refused, type Action } from "./browser/act.ts";
 import { settledSnapshot, trackRequests, type Snapshot } from "./browser/snapshot.ts";
 import { parseNoul, type Jev } from "./jev/answers.ts";
-import { decide, type Decision, type HistoryEntry } from "./jev/decide.ts";
+import { decide, describeElement, type Decision, type HistoryEntry } from "./jev/decide.ts";
 import { EXPECT_RULES } from "./jev/prompts.ts";
 import type { RunReport, Status, StepReport, Turn } from "./report.ts";
 import type { Limits, Scenario, Step } from "./scenario.ts";
@@ -37,7 +37,7 @@ export async function runScenario(options: RunOptions): Promise<RunReport> {
     status: "pass",
     startedAt: new Date(started).toISOString(),
     durationMs: 0,
-    usage: { jevRequests: 0, jevInputTokens: 0, jevOutputTokens: 0, textModelCalls: 0 },
+    usage: { jevRequests: 0, jevInputTokens: 0, jevOutputTokens: 0, textModelCalls: 0, textModelInputTokens: 0, textModelOutputTokens: 0 },
     steps: [],
   };
   trackRequests(page);
@@ -104,10 +104,13 @@ async function runStep(options: RunOptions, step: Step, report: RunReport): Prom
     countJev(decision.usage);
     const turn = turnFor(turns.length + 1, state, decision);
     turns.push(turn);
+    const capture = async () => {
+      turn.screenshot = await screenshot(page, options.dir, report, turn.n);
+    };
 
     if (decision.confidence < limits.confidence) {
       turn.outcome = "unclear";
-      turn.screenshot = await screenshot(page, options.dir, report, turns.length);
+      await capture();
       return end({
         status: "unclear",
         reason: `Confidence ${decision.confidence.toFixed(2)} for ${decision.operation} is below ${limits.confidence}.`,
@@ -115,12 +118,12 @@ async function runStep(options: RunOptions, step: Step, report: RunReport): Prom
     }
     if (decision.operation === "BLOCKED") {
       turn.outcome = "blocked";
-      turn.screenshot = await screenshot(page, options.dir, report, turns.length);
+      await capture();
       return end({ status: "blocked", reason: "Jev chose BLOCKED." });
     }
     if (decision.operation === "DONE") {
       turn.outcome = "done";
-      turn.screenshot = await screenshot(page, options.dir, report, turns.length);
+      await capture();
       if (!step.expect) return end({ status: "pass" });
       const expect = await checkExpect(jev, state, step.expect);
       countJev(expect.usage);
@@ -135,9 +138,17 @@ async function runStep(options: RunOptions, step: Step, report: RunReport): Prom
     let typed: string | undefined;
     if (decision.operation === "TYPE_TEXT") {
       try {
-        const value = await valueFor({ jev, textModel: options.textModel, step, element: decision.target.element, page: state, history });
-        if (value.source === "data") countJev(value.usage);
-        else report.usage.textModelCalls++;
+        const value = await valueFor({
+          jev, textModel: options.textModel, step, element: decision.target.element, page: state, history,
+          onUsage(event) {
+            if (event.source === "jev") countJev(event.usage);
+            else {
+              report.usage.textModelCalls++;
+              report.usage.textModelInputTokens += event.usage?.inputTokens ?? 0;
+              report.usage.textModelOutputTokens += event.usage?.outputTokens ?? 0;
+            }
+          },
+        });
         const text = decision.target.element.sensitive ? MASK : value.text;
         turn.value = {
           text,
@@ -151,7 +162,7 @@ async function runStep(options: RunOptions, step: Step, report: RunReport): Prom
       } catch (error) {
         if (!(error instanceof NoValue)) throw error;
         turn.outcome = "no_value";
-        turn.screenshot = await screenshot(page, options.dir, report, turns.length);
+        await capture();
         return end({ status: "blocked", reason: error.message });
       }
     } else if (decision.operation === "SELECT") {
@@ -177,7 +188,7 @@ async function runStep(options: RunOptions, step: Step, report: RunReport): Prom
     refusalsInRow = 0;
     actions++;
     turn.outcome = "acted";
-    turn.screenshot = await screenshot(page, options.dir, report, turns.length);
+    await capture();
     history.push({
       operation: decision.operation,
       ...("target" in decision && { element: `[${decision.target.label}] ${decision.target.element.name}${decision.target.option ? ` → ${decision.target.option.label}` : ""}` }),
@@ -233,13 +244,7 @@ async function checkExpect(jev: Jev, state: Snapshot, expected: string) {
   const result = await jev.systemOne({
     state: {
       page: { url: state.url, title: state.title, text: state.text },
-      elements: state.elements.map((e) => ({
-        name: e.name,
-        role: e.role,
-        ...(e.value !== undefined && { value: e.value }),
-        ...(e.checked !== undefined && { checked: e.checked }),
-        ...(e.selected !== undefined && { selected: e.selected }),
-      })),
+      elements: state.elements.map(describeElement),
     },
     questions: { expect: noul({ expected, rules: EXPECT_RULES }) },
   });

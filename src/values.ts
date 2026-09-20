@@ -2,7 +2,7 @@ import { choice, type Usage } from "@typesafe-ai/sdk";
 import { z } from "zod";
 import type { Element, Snapshot } from "./browser/snapshot.ts";
 import { parseChoice, type ChoiceAnswer, type Jev } from "./jev/answers.ts";
-import type { HistoryEntry } from "./jev/decide.ts";
+import { HISTORY_LIMIT, type HistoryEntry } from "./jev/decide.ts";
 import { DATA_KEY_RULES, TEXT_VALUE_RULES } from "./jev/prompts.ts";
 import type { Step } from "./scenario.ts";
 
@@ -14,11 +14,16 @@ interface TextModelContext {
 }
 
 /** Writes a value for a field. Returns null when the model cannot know the value. */
-export type TextModel = (context: TextModelContext) => Promise<{ text: string | null; model: string; usage?: unknown }>;
+export type TextModel = (context: TextModelContext) => Promise<{ text: string | null; model: string; usage?: TextUsage }>;
+
+export interface TextUsage {
+  inputTokens: number;
+  outputTokens: number;
+}
 
 export type Value =
   | { text: string; source: "data"; key: string; answer: ChoiceAnswer; usage: Usage; latencyMs: number }
-  | { text: string; source: "model"; model: string; answer?: ChoiceAnswer; usage?: unknown; latencyMs: number };
+  | { text: string; source: "model"; model: string; answer?: ChoiceAnswer; usage?: TextUsage; latencyMs: number };
 
 /** No value can be typed. The step stops as `blocked` with this reason. */
 export class NoValue extends Error {
@@ -42,8 +47,9 @@ export async function valueFor(input: {
   element: Element;
   page: Snapshot;
   history: HistoryEntry[];
+  onUsage?: (event: { source: "jev"; usage: Usage } | { source: "model"; usage?: TextUsage }) => void;
 }): Promise<Value> {
-  const { jev, textModel, step, element, page, history } = input;
+  const { jev, textModel, step, element, page, history, onUsage } = input;
   const keys = Object.keys(step.data ?? {});
   let answer: ChoiceAnswer | undefined;
   const started = performance.now();
@@ -63,6 +69,7 @@ export async function valueFor(input: {
         ),
       },
     });
+    onUsage?.({ source: "jev", usage: result.usage });
     answer = parseChoice(result.answers.data_key, labels, "data_key");
     if (answer.choice !== NONE) {
       const latencyMs = Math.round(performance.now() - started);
@@ -81,8 +88,9 @@ export async function valueFor(input: {
       ...(element.context && { context: element.context }),
     },
     page: { title: page.title, text: page.text },
-    recent_actions: history.slice(-6),
+    recent_actions: history.slice(-HISTORY_LIMIT),
   });
+  onUsage?.({ source: "model", usage: generated.usage });
   if (generated.text === null) throw new NoValue(`The text model has no value for "${element.name}".`);
   const latencyMs = Math.round(performance.now() - started);
   return { text: generated.text, source: "model", model: generated.model, answer, usage: generated.usage, latencyMs };
@@ -91,7 +99,10 @@ export async function valueFor(input: {
 const TextOutput = z.object({ text: z.string().min(1).max(2000).nullable() }).strict();
 const ChatCompletion = z.object({
   choices: z.array(z.object({ message: z.object({ content: z.string() }) })).min(1),
-  usage: z.unknown().optional(),
+  usage: z.object({
+    prompt_tokens: z.number().int().nonnegative(),
+    completion_tokens: z.number().int().nonnegative(),
+  }).transform((usage): TextUsage => ({ inputTokens: usage.prompt_tokens, outputTokens: usage.completion_tokens })).optional(),
 });
 
 /** An OpenAI-compatible chat model that returns JSON `{ text }`. Returns undefined when no key is set. */

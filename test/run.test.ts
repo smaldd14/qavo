@@ -1,7 +1,8 @@
 import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
+import * as snapshots from "../src/browser/snapshot.ts";
 import type { SystemOneRequest } from "@typesafe-ai/sdk";
 import type { Page } from "playwright-core";
 import type { Jev } from "../src/jev/answers.ts";
@@ -11,6 +12,8 @@ import type { TextModel } from "../src/values.ts";
 import { useFixtureBrowser } from "./browser.ts";
 
 const fixtures = useFixtureBrowser();
+
+afterEach(() => vi.restoreAllMocks());
 
 type Scripted =
   | { operation: string; target?: string; confidence?: number }
@@ -161,6 +164,125 @@ describe("runScenario", () => {
       page_changes: { removed: ["2 left", "112 Automotive Blvd"], added: ["1 left", "21 Aberdeen Ave"] },
     });
     expect(report.steps[0]!.turns[0]!.decision.request).toEqual(requests[0]);
+  });
+
+  test.each([
+    { name: "fallback", text: "12.00", usage: { inputTokens: 23, outputTokens: 4 }, model: true, data: true },
+    { name: "fallback without token usage", text: "12.00", usage: undefined, model: true, data: true },
+    { name: "model has no value", text: null, usage: { inputTokens: 23, outputTokens: 4 }, model: true, data: true },
+    { name: "model has no value or token usage", text: null, usage: undefined, model: true, data: false },
+    { name: "no model configured", text: null, usage: undefined, model: false, data: true },
+  ])("counts all value requests: $name", async ({ text, usage, model, data }) => {
+    const page = await fixtures.open("spa.html");
+    const scenario: Scenario = {
+      name: "value usage",
+      url: page.url(),
+      steps: [{ intent: "Enter the amount", ...(data && { data: { unrelated: "unused" } }), actionLimit: 3 }],
+    };
+    const script: Scripted[] = [{ operation: "TYPE_TEXT", target: "Owed at takeover" }];
+    if (data) script.push({ dataKey: "none" });
+    if (text !== null) script.push({ operation: "DONE" });
+    const { jev, requests, remaining } = scriptedJev(script);
+    const textModel = vi.fn<TextModel>(async () => ({ text, model: "fake-text", usage }));
+    const { report, dir } = await run(page, scenario, jev, model ? textModel : undefined);
+    expect(report.status).toBe(text === null ? "blocked" : "pass");
+    expect(remaining()).toBe(0);
+    expect(report.usage).toEqual({
+      jevRequests: requests.length,
+      jevInputTokens: requests.length * 100,
+      jevOutputTokens: requests.length,
+      textModelCalls: model ? 1 : 0,
+      textModelInputTokens: usage?.inputTokens ?? 0,
+      textModelOutputTokens: usage?.outputTokens ?? 0,
+    });
+    expect(textModel).toHaveBeenCalledTimes(model ? 1 : 0);
+    if (text === null) {
+      const turn = report.steps[0]!.turns[0]!;
+      expect(turn.outcome).toBe("no_value");
+      expect(turn.value).toBeUndefined();
+      expect(existsSync(join(dir, turn.screenshot!))).toBe(true);
+    }
+  });
+
+  test("expectations omit sensitive values and retain element state on the SPA", async () => {
+    const page = await fixtures.open("spa.html");
+    const settledSnapshot = snapshots.settledSnapshot;
+    vi.spyOn(snapshots, "settledSnapshot").mockImplementation(async (page) => {
+      const state = await settledSnapshot(page);
+      state.elements.push({
+        index: 100,
+        name: "Private field",
+        role: "textbox",
+        sensitive: true,
+        value: "private-value",
+        operations: ["TYPE_TEXT"],
+      }, {
+        index: 101,
+        name: "Account state",
+        role: "combobox",
+        value: "Open",
+        checked: false,
+        selected: true,
+        expanded: false,
+        pressed: "mixed",
+        context: "Account details",
+        operations: ["SELECT"],
+        options: [{ value: "open", label: "Open" }],
+      });
+      return state;
+    });
+    const scenario: Scenario = {
+      name: "safe expectation",
+      url: page.url(),
+      steps: [{ intent: "Inspect the account", expect: "The account is open", actionLimit: 3 }],
+    };
+    const { jev, requests } = scriptedJev([{ operation: "DONE" }, { expect: 0.9 }]);
+    const { report } = await run(page, scenario, jev);
+    expect(report.status).toBe("pass");
+    expect(JSON.stringify(requests)).not.toContain("private-value");
+    expect(requests[1]!.state).toMatchObject({ elements: expect.arrayContaining([
+      expect.objectContaining({ name: "Private field", role: "textbox", sensitive: true }),
+      expect.objectContaining({
+        name: "Account state", role: "combobox", value: "Open", checked: false,
+        selected: true, expanded: false, pressed: "mixed", context: "Account details",
+      }),
+    ]) });
+    expect(report.usage).toMatchObject({ jevRequests: 2, jevInputTokens: 200, jevOutputTokens: 2 });
+  });
+
+  test("does not attribute a successful action's changes to a later refusal on the SPA", async () => {
+    const page = await fixtures.open("spa.html");
+    const scenario: Scenario = {
+      name: "refusal attribution",
+      url: page.url(),
+      steps: [{ intent: "Save the accounts", actionLimit: 4 }],
+    };
+    const scripted = scriptedJev([
+      { operation: "CLICK", target: "Save and next" },
+      { operation: "CLICK", target: "Save and next" },
+      { operation: "CLICK", target: "Save and next" },
+      { operation: "DONE" },
+    ]);
+    const jev: Jev = {
+      async systemOne(request) {
+        const result = await scripted.jev.systemOne(request);
+        if (scripted.requests.length === 2) await page.locator("#amount").fill("1.00");
+        return result;
+      },
+    };
+    const { report } = await run(page, scenario, jev);
+    expect(report.status).toBe("pass");
+    const turns = report.steps[0]!.turns;
+    expect(turns.map((turn) => [turn.outcome, turn.pageChanged])).toEqual([
+      ["acted", true], ["refused", undefined], ["acted", true], ["done", undefined],
+    ]);
+    expect(turns[1]!.refusal).toMatch(/^stale:/);
+    expect(turns[1]!.changes).toBeUndefined();
+    expect(turns[0]!.changes).toEqual({ removed: ["2 left", "112 Automotive Blvd"], added: ["1 left", "21 Aberdeen Ave"] });
+    const afterRefusal = scripted.requests[2]!.state as { recent_actions: unknown[] };
+    expect(afterRefusal.recent_actions).toHaveLength(1);
+    expect(afterRefusal.recent_actions[0]).toMatchObject({ page_changed: true, page_changes: turns[0]!.changes });
+    expect(turns[2]!.changes?.added).toContain("0 left");
   });
 
   test("fails when the expect check says no", async () => {

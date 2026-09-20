@@ -1,4 +1,6 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SystemOneRequest, Usage } from "@typesafe-ai/sdk";
 import type { Operation } from "./browser/snapshot.ts";
@@ -51,14 +53,17 @@ export interface RunReport {
   reason?: string;
   startedAt: string;
   durationMs: number;
-  usage: { jevRequests: number; jevInputTokens: number; jevOutputTokens: number; textModelCalls: number };
+  usage: { jevRequests: number; jevInputTokens: number; jevOutputTokens: number; textModelCalls: number; textModelInputTokens: number; textModelOutputTokens: number };
   steps: StepReport[];
 }
 
-export async function createRunDir(root: string) {
-  const id = new Date().toISOString().replace(/[:.]/g, "-");
-  const dir = join(root, "runs", id);
-  await mkdir(dir, { recursive: true });
+export async function createRunDir(root?: string) {
+  root ??= await mkdtemp(join(tmpdir(), "qavo-"));
+  const id = randomUUID();
+  const runs = join(root, "runs");
+  await mkdir(runs, { recursive: true, mode: 0o700 });
+  const dir = join(runs, id);
+  await mkdir(dir, { mode: 0o700 });
   return { id, dir };
 }
 

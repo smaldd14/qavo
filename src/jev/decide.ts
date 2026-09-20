@@ -41,7 +41,7 @@ const OPERATION_DESCRIPTIONS: Record<Operation | Control, string> = {
   BLOCKED: "No offered operation can make progress on the step.",
 };
 
-const HISTORY_LIMIT = 10;
+export const HISTORY_LIMIT = 10;
 
 /** Offered target labels for each operation. SELECT targets are `<index>:<option position>`. */
 function targetsFor(elements: Element[]): Partial<Record<Operation, Target[]>> {
@@ -59,8 +59,9 @@ function targetsFor(elements: Element[]): Partial<Record<Operation, Target[]>> {
   return targets;
 }
 
-const describeElement = (e: Element) => ({
+export const describeElement = (e: Element) => ({
   element: `[${e.index}] ${e.name}`,
+  name: e.name,
   role: e.role,
   ...(e.value !== undefined && !e.sensitive && { value: e.value }),
   ...(e.sensitive && { sensitive: true }),
