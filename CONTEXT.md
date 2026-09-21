@@ -22,6 +22,10 @@
 
 **Value source.** Where a typed value came from. `data`: Jev chose a key from `step.data`. `model`: the text model wrote the value. Each typed value in the report has its source.
 
+**Environment reference.** An exact `@env:NAME` value in `step.data`. Code resolves it before execution and treats the result as sensitive. Reports and model requests replace known secret text with `***`. Runs with environment references omit screenshots. The source remains `data`.
+
+**Session.** Browser authentication state saved by `qavo login`. The default path is `~/.qavo/sessions/<encoded-host>.json`, including an encoded port. `--out` overrides it. Runs load sessions only through config `storageState` or `--storage-state`; both accept `~/`.
+
 **Result states.**
 - `pass`: every step reached `DONE`, and each `expect` check said yes.
 - `fail`: a step reached `DONE`, but its `expect` check said no.

@@ -31,15 +31,19 @@ pnpm qavo run examples/fixture-hotel.json --headed
 To run as a logged-in user, save a session once, then point `qavo.config.ts` (or `--storage-state`) at it:
 
 ```sh
-pnpm qavo login http://localhost:5173 --out .qavo/admin.json
+pnpm qavo login http://localhost:5173
 ```
+
+Login saves a private session file to `~/.qavo/sessions/<encoded-host>.json`. The host includes its port; `localhost:5173` becomes `localhost%3A5173.json`. Use `--out` for separate role files. Login replaces an existing session at that path.
+
+Session paths accept `~/` in `--out`, `--storage-state`, and config `storageState`. Runs do not load saved sessions automatically.
 
 `qavo run` looks for `qavo.config.ts` in the scenario's folder and its parents. Configuration does not determine the output directory:
 
 ```ts
 export default {
   url: "http://localhost:5173",   // scenario URLs can be paths, for example "/work-orders"
-  storageState: ".qavo/admin.json",
+  storageState: "~/.qavo/sessions/localhost%3A5173.json",
   allowHosts: ["localhost:5173", "127.0.0.1:54321"],
   limits: { confidence: 0.5, expectPass: 0.7, expectFail: 0.3, stepSeconds: 120 },
 };
@@ -62,6 +66,14 @@ A scenario is JSON:
 ```
 
 A goal is a scenario with one step. A step doc is a scenario with many steps.
+
+## Environment data
+
+Use an exact reference in `step.data`, such as `"password": "@env:QA_PASSWORD"`. Supply the variable through your environment or CI secret store. Missing variables and malformed references fail before the browser starts. Literal values still work. References do not expand inside larger strings or recursively.
+
+All env-resolved values are sensitive, including values entered into non-password fields. Reports and action history use `***`. Model requests and reports also replace known secret text and its URL-encoded form. This replacement does not recognize arbitrary application transformations of a secret.
+
+Runs with env references omit screenshots because the application can display secrets anywhere on the page. Runs without env references retain screenshots. Keep all reports private.
 
 ## Artifact output
 

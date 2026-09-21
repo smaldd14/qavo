@@ -16,6 +16,25 @@ export const Scenario = z.object({
 });
 export type Scenario = z.infer<typeof Scenario>;
 
+export function resolveScenarioData(scenario: Scenario, env: NodeJS.ProcessEnv = process.env) {
+  const secrets: string[] = [];
+  const steps = scenario.steps.map((step) => ({
+    ...step,
+    ...(step.data && { data: Object.fromEntries(Object.entries(step.data).map(([key, value]) => {
+      if (!value.startsWith("@env:")) return [key, value];
+      if (!/^@env:[A-Za-z_][A-Za-z0-9_]*$/.test(value) || value.includes("\n")) {
+        throw new Error("Invalid environment reference in step.data.");
+      }
+      const name = value.slice(5);
+      const resolved = Object.hasOwn(env, name) ? env[name] : undefined;
+      if (resolved === undefined) throw new Error(`Missing environment variable: ${name}`);
+      secrets.push(resolved);
+      return [key, resolved];
+    })) }),
+  }));
+  return { scenario: { ...scenario, steps }, secrets: [...new Set(secrets)] };
+}
+
 export const Limits = z.object({
   /** A decision with a lower confidence stops the run as `unclear`. */
   confidence: z.number().min(0).max(1).default(0.5),

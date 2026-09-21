@@ -1,5 +1,6 @@
-import { existsSync } from "node:fs";
-import { mkdir, readFile } from "node:fs/promises";
+import { constants, existsSync } from "node:fs";
+import { chmod, mkdir, open, readFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { pathToFileURL } from "node:url";
@@ -9,13 +10,18 @@ import { chromium } from "playwright-core";
 import { blockOtherHosts } from "./browser/act.ts";
 import { createRunDir, writeReport } from "./report.ts";
 import { runScenario } from "./run.ts";
-import { Config, Scenario } from "./scenario.ts";
+import { Config, resolveScenarioData, Scenario } from "./scenario.ts";
 import { textModelFromEnv } from "./values.ts";
 import { parseUploadConfig, uploadRunArtifacts } from "./upload.ts";
 
 const USAGE = `Usage:
   qavo run <scenario.json> [--headed] [--config qavo.config.ts] [--storage-state .qavo/role.json] [--out <directory>]
-  qavo login <url> --out .qavo/<role>.json`;
+  qavo login <url> [--out <session.json>]
+
+Login defaults to ~/.qavo/sessions/<encoded-host>.json.
+The filename uses encodeURIComponent(URL.host), including the port (localhost:3000 becomes localhost%3A3000.json).
+Run loads a session only with --storage-state or config storageState.
+Session paths expand ~/. Other relative paths use the current directory, or the config directory for config storageState.`;
 
 const CONFIG_NAMES = ["qavo.config.ts", "qavo.config.js"];
 
@@ -28,15 +34,22 @@ function findConfig(from: string): string | undefined {
   }
 }
 
+function resolveSessionPath(path: string, baseDir = process.cwd()) {
+  return path.startsWith("~/") ? resolve(homedir(), path.slice(2)) : resolve(baseDir, path);
+}
+
 async function run(scenarioPath: string, options: { headed?: boolean; config?: string; storageState?: string; out?: string }) {
   const upload = parseUploadConfig();
   const scenario = Scenario.parse(JSON.parse(await readFile(scenarioPath, "utf8")));
+  resolveScenarioData(scenario);
   const configPath = options.config ? resolve(options.config) : findConfig(dirname(scenarioPath));
   const config = Config.parse(configPath ? (await import(pathToFileURL(configPath).href)).default : {});
   const baseDir = configPath ? dirname(configPath) : process.cwd();
   const url = new URL(scenario.url, config.url).href;
   const allowHosts = config.allowHosts ?? [new URL(url).host];
-  const storageState = options.storageState ?? (config.storageState && resolve(baseDir, config.storageState));
+  const storageState = options.storageState !== undefined
+    ? resolveSessionPath(options.storageState)
+    : config.storageState !== undefined ? resolveSessionPath(config.storageState, baseDir) : undefined;
   if (storageState && !existsSync(storageState)) {
     throw new Error(`The storage state ${storageState} does not exist. Run: qavo login <url> --out ${storageState}`);
   }
@@ -82,7 +95,10 @@ async function run(scenarioPath: string, options: { headed?: boolean; config?: s
   }
 }
 
-async function login(url: string, out: string) {
+async function login(url: string, output?: string) {
+  const out = output === undefined
+    ? join(homedir(), ".qavo", "sessions", `${encodeURIComponent(new URL(url).host)}.json`)
+    : resolveSessionPath(output);
   const browser = await chromium.launch({ headless: false });
   try {
     const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
@@ -91,8 +107,16 @@ async function login(url: string, out: string) {
     const terminal = createInterface({ input: process.stdin, output: process.stdout });
     await terminal.question("Log in in the browser window. Then press Enter here to save the session. ");
     terminal.close();
-    await mkdir(dirname(resolve(out)), { recursive: true });
-    await context.storageState({ path: out });
+    await mkdir(dirname(out), { recursive: true, mode: 0o700 });
+    if (output === undefined) await chmod(dirname(out), 0o700);
+    const state = await context.storageState();
+    const file = await open(out, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW, 0o600);
+    try {
+      await file.chmod(0o600);
+      await file.writeFile(JSON.stringify(state), "utf8");
+    } finally {
+      await file.close();
+    }
     console.log(`Saved ${out}. Do not commit this file.`);
   } finally {
     await browser.close();
@@ -112,7 +136,7 @@ const { positionals, values } = parseArgs({
 const [command, target] = positionals;
 if (command === "run" && target) {
   await run(target, { headed: values.headed, config: values.config, storageState: values["storage-state"], out: values.out });
-} else if (command === "login" && target && values.out) {
+} else if (command === "login" && target) {
   await login(target, values.out);
 } else {
   console.error(USAGE);

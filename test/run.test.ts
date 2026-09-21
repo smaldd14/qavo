@@ -335,6 +335,33 @@ describe("runScenario", () => {
     expect(report).toMatchObject({ status: "blocked", reason: "Step 1: 3 actions in a row did not change the page." });
   });
 
+  test("keeps env data out of later models and reports across SPA steps", async () => {
+    vi.stubEnv("QA_AMOUNT", "123.45");
+    const page = await fixtures.open("spa.html");
+    const scenario: Scenario = {
+      name: "env data", url: page.url(), steps: [
+        { intent: "Enter the amount", data: { amount: "@env:QA_AMOUNT" }, actionLimit: 3 },
+        { intent: "Inspect the amount", expect: "The amount is present", actionLimit: 3 },
+      ],
+    };
+    const { jev, requests } = scriptedJev([
+      { operation: "TYPE_TEXT", target: "Owed at takeover" }, { dataKey: "amount" }, { operation: "DONE" },
+      { operation: "TYPE_TEXT", target: "Owed at takeover" }, { operation: "DONE" }, { expect: 0.9 },
+    ]);
+    const textModel = vi.fn<TextModel>(async () => ({ text: "0", model: "fake" }));
+    try {
+      const { report } = await run(page, scenario, jev, textModel);
+      expect(report.status).toBe("pass");
+      expect(report.steps[0]!.turns[0]!.value).toMatchObject({ text: "***", source: "data", key: "amount" });
+      expect(JSON.stringify(requests)).not.toContain("123.45");
+      expect(JSON.stringify(textModel.mock.calls)).not.toContain("123.45");
+      expect(JSON.stringify(report)).not.toContain("123.45");
+      expect(report.steps.flatMap((step) => step.turns).every((turn) => turn.screenshot === undefined)).toBe(true);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   test("a password field never reaches the text model, and its value is masked", async () => {
     const page = await fixtures.open("form.html");
     const textModel = vi.fn<TextModel>(async () => ({ text: "guess", model: "fake-text" }));

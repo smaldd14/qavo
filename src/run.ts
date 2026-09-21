@@ -7,7 +7,7 @@ import { parseNoul, type Jev } from "./jev/answers.ts";
 import { decide, describeElement, type Decision, type HistoryEntry } from "./jev/decide.ts";
 import { EXPECT_RULES } from "./jev/prompts.ts";
 import type { RunReport, Status, StepReport, Turn } from "./report.ts";
-import type { Limits, Scenario, Step } from "./scenario.ts";
+import { resolveScenarioData, type Limits, type Scenario, type Step } from "./scenario.ts";
 import { NoValue, valueFor, type TextModel } from "./values.ts";
 
 export interface RunOptions {
@@ -28,7 +28,20 @@ type StepEnd = { status: Status; reason?: string; expect?: StepReport["expect"] 
 const MASK = "***";
 
 export async function runScenario(options: RunOptions): Promise<RunReport> {
-  const { page, scenario, url, id } = options;
+  const { page, url, id } = options;
+  const { scenario, secrets } = resolveScenarioData(options.scenario);
+  const patterns = [...new Set(secrets.filter(Boolean).flatMap((secret) => [secret, encodeURIComponent(secret), secret.slice(0, 200)]))]
+    .sort((a, b) => b.length - a.length);
+  const redact = <T>(value: T): T => JSON.parse(JSON.stringify(value, (_key, item: unknown) => {
+    if (typeof item !== "string") return item;
+    return patterns.reduce((text, secret) => text.split(secret).join(MASK), item);
+  }));
+  const safeOptions: RunOptions = {
+    ...options,
+    scenario,
+    jev: { systemOne: (request) => options.jev.systemOne(redact(request)) },
+    textModel: options.textModel ? (context) => options.textModel!(redact(context)) : undefined,
+  };
   const started = Date.now();
   const report: RunReport = {
     id,
@@ -43,7 +56,7 @@ export async function runScenario(options: RunOptions): Promise<RunReport> {
   trackRequests(page);
   await page.goto(url);
   for (const step of scenario.steps) {
-    const stepReport = await runStep(options, step, report);
+    const stepReport = await runStep(safeOptions, step, report, secrets);
     report.steps.push(stepReport);
     if (stepReport.status !== "pass") {
       report.status = stepReport.status;
@@ -52,10 +65,10 @@ export async function runScenario(options: RunOptions): Promise<RunReport> {
     }
   }
   report.durationMs = Date.now() - started;
-  return report;
+  return redact(report);
 }
 
-async function runStep(options: RunOptions, step: Step, report: RunReport): Promise<StepReport> {
+async function runStep(options: RunOptions, step: Step, report: RunReport, secrets: string[]): Promise<StepReport> {
   const { page, jev, limits } = options;
   const started = Date.now();
   const turns: Turn[] = [];
@@ -105,7 +118,7 @@ async function runStep(options: RunOptions, step: Step, report: RunReport): Prom
     const turn = turnFor(turns.length + 1, state, decision);
     turns.push(turn);
     const capture = async () => {
-      turn.screenshot = await screenshot(page, options.dir, report, turn.n);
+      if (secrets.length === 0) turn.screenshot = await screenshot(page, options.dir, report, turn.n);
     };
 
     if (decision.confidence < limits.confidence) {
@@ -149,7 +162,7 @@ async function runStep(options: RunOptions, step: Step, report: RunReport): Prom
             }
           },
         });
-        const text = decision.target.element.sensitive ? MASK : value.text;
+        const text = decision.target.element.sensitive || secrets.includes(value.text) ? MASK : value.text;
         turn.value = {
           text,
           source: value.source,
