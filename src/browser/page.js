@@ -168,6 +168,8 @@
         const attribute = e.getAttribute(`aria-${state}`);
         if (attribute !== null) element[state] = attribute === "true" ? true : attribute === "false" ? false : attribute;
       }
+      const haspopup = e.getAttribute("aria-haspopup");
+      if (haspopup && haspopup !== "false") element.haspopup = haspopup === "true" ? "menu" : haspopup;
       const context = contextOf(e);
       if (context && context !== element.name) element.context = context;
       if (e.tagName === "SELECT") {

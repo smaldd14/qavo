@@ -34,4 +34,8 @@
 
 **Run.** One execution of a scenario. It writes `report.json` and screenshots in a private temporary directory by default. `--out` selects a local root with `runs/<id>/` below it. Optional S3-compatible uploads copy only the report and its referenced screenshots. Output does not depend on the target repository.
 
+**Scenario draft.** A scenario that code builds from the structure of the input, before the user approves it. Code copies each step intent and `expect` from the input text. No model writes or changes them. Input text that does not become a step is shown as a note.
+
+**Scenario authoring.** The `qavo scenario new` command asks for the start URL first, then reads pasted text, a `.txt` file, or a `.docx` file. It shows the drafts and writes ordinary scenario JSON files after confirmation. It does not call a model, run scenarios, or resolve environment references.
+
 **allowHosts.** The hosts that the browser can visit. A navigation to another host stops the step as `blocked`.

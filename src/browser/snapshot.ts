@@ -13,6 +13,7 @@ export interface Element {
   selected?: boolean | string;
   expanded?: boolean | string;
   pressed?: boolean | string;
+  haspopup?: string;
   context?: string;
   operations: Operation[];
   options?: { value: string; label: string }[];

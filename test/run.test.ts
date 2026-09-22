@@ -164,6 +164,10 @@ describe("runScenario", () => {
       page_changes: { removed: ["2 left", "112 Automotive Blvd"], added: ["1 left", "21 Aberdeen Ave"] },
     });
     expect(report.steps[0]!.turns[0]!.decision.request).toEqual(requests[0]);
+    // An account menu named only by initials must show Jev that it opens a menu.
+    expect(requests[0]!.state).toMatchObject({ elements: expect.arrayContaining([
+      expect.objectContaining({ name: "DS", role: "button", expanded: false, haspopup: "menu" }),
+    ]) });
   });
 
   test.each([

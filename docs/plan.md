@@ -65,6 +65,13 @@ Each iteration ends with a commit to `main`, passing `pnpm test`, and one visibl
 - Set the confidence threshold from that data.
 - **Done when:** the design doc has the Stage 0 numbers, and 5 pm-agent scenarios pass with no Claude call.
 
+### 7. Scenario authoring
+- `qavo scenario new` asks for the start URL first, then reads stdin, `.txt`, or `.docx` input. Code builds drafts from headings, list items, `Expected:` lines, and table rows. No model is called.
+- Drafts copy the input text word for word, show text that did not become a step, and support edit, approve, or cancel.
+- Approval writes one scenario JSON file per draft in the current directory, or in `--out` when provided.
+- Data keys become `@env:NAME` references after the user supplies environment variable names. The command never resolves or runs them.
+- **Done when:** offline tests cover extraction, draft building, confirmation, secret references, file collisions, and the CLI writes no run artifacts. A scenario written by the command passes against pm-agent.
+
 ### Later (only when Stage 0 data shows a need)
 HTML report, Playwright test export for passed runs, the Claude rescuer, a planner from a PR, a login for each role, context providers, and CI `check-pr`.
 

@@ -1,4 +1,4 @@
-import { constants, existsSync } from "node:fs";
+import { constants, createReadStream, createWriteStream, existsSync } from "node:fs";
 import { chmod, mkdir, open, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -11,12 +11,17 @@ import { blockOtherHosts } from "./browser/act.ts";
 import { createRunDir, writeReport } from "./report.ts";
 import { runScenario } from "./run.ts";
 import { Config, resolveScenarioData, Scenario } from "./scenario.ts";
+import { askUrl, confirmDrafts } from "./scenario-confirm.ts";
+import { readScenarioInput } from "./scenario-input.ts";
+import { draftScenarios, normalizeUrl } from "./scenario-new.ts";
+import { writeScenarios } from "./scenario-writer.ts";
 import { textModelFromEnv } from "./values.ts";
 import { parseUploadConfig, uploadRunArtifacts } from "./upload.ts";
 
 const USAGE = `Usage:
   qavo run <scenario.json> [--headed] [--config qavo.config.ts] [--storage-state .qavo/role.json] [--out <directory>]
   qavo login <url> [--out <session.json>]
+  qavo scenario new [--url <start url>] [--from <file>] [--out <directory>]
 
 Login defaults to ~/.qavo/sessions/<encoded-host>.json.
 The filename uses encodeURIComponent(URL.host), including the port (localhost:3000 becomes localhost%3A3000.json).
@@ -123,6 +128,55 @@ async function login(url: string, output?: string) {
   }
 }
 
+async function scenarioNew(options: { from?: string; out?: string; url?: string }) {
+  const url = options.url ? normalizeUrl(options.url) : await askStartUrl();
+  const stdin = options.from ? undefined : await readPastedInstructions();
+  const drafts = draftScenarios(await readScenarioInput({ file: options.from, stdin }), url);
+  if (drafts.length === 0) throw new Error("The instructions contain no steps.");
+  const terminalInput = options.from ? process.stdin : createReadStream("/dev/tty");
+  const terminalOutput = options.from ? process.stdout : createWriteStream("/dev/tty");
+  const terminal = createInterface({ input: terminalInput, output: terminalOutput });
+  try {
+    const confirmed = await confirmDrafts({ drafts, terminal, output: (line) => console.log(line) });
+    if (!confirmed) {
+      console.log("Cancelled. No scenario files were written.");
+      return;
+    }
+    const paths = await writeScenarios(resolve(options.out ?? process.cwd()), confirmed);
+    for (const path of paths) console.log(`Wrote ${path}`);
+  } finally {
+    terminal.close();
+    if (terminalInput !== process.stdin) terminalInput.destroy();
+    if (terminalOutput !== process.stdout) terminalOutput.destroy();
+  }
+}
+
+async function askStartUrl() {
+  const terminal = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    return await askUrl(terminal, (line) => console.log(line));
+  } finally {
+    terminal.close();
+  }
+}
+
+async function readPastedInstructions() {
+  console.log(`Paste instructions. Type .qavo-end on its own line when finished (Ctrl-D also works on an empty line).
+Each list item ("1." or "-") is a step. "Expected: ..." on the next line is that step's check. "# Name" starts another scenario.
+Text with no list is one step.`);
+  const input = createInterface({ input: process.stdin, output: process.stdout });
+  const lines: string[] = [];
+  try {
+    for await (const line of input) {
+      if (line.trim() === ".qavo-end") break;
+      lines.push(line);
+    }
+  } finally {
+    input.close();
+  }
+  return lines.join("\n");
+}
+
 if (existsSync(".env")) process.loadEnvFile(".env");
 const { positionals, values } = parseArgs({
   allowPositionals: true,
@@ -131,6 +185,8 @@ const { positionals, values } = parseArgs({
     config: { type: "string" },
     "storage-state": { type: "string" },
     out: { type: "string" },
+    from: { type: "string" },
+    url: { type: "string" },
   },
 });
 const [command, target] = positionals;
@@ -138,6 +194,13 @@ if (command === "run" && target) {
   await run(target, { headed: values.headed, config: values.config, storageState: values["storage-state"], out: values.out });
 } else if (command === "login" && target) {
   await login(target, values.out);
+} else if (command === "scenario" && target === "new") {
+  try {
+    await scenarioNew({ from: values.from, out: values.out, url: values.url });
+  } catch (error) {
+    console.error(`Scenario creation failed: ${error instanceof Error ? error.message : String(error)}`);
+    process.exitCode = 2;
+  }
 } else {
   console.error(USAGE);
   process.exitCode = 2;

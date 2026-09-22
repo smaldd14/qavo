@@ -6,6 +6,8 @@ Read `CONTEXT.md` for the terms. Read `docs/plan.md` for the current iteration.
 
 - Code owns the loop. A model never chooses what code runs next except through a typed choice from options that code offered.
 - All model output goes through zod before use. A choice must be one of the offered labels. Probabilities must be finite numbers from 0 to 1.
+- When a text model must return a JSON shape, send `response_format: json_schema` with `strict: true`, made with `z.toJSONSchema` from the same zod schema that parses the reply. Do not use `json_object` and a prose list of keys. Do not add code that maps key aliases (`goal`, `name`, `setup`) to the real keys. The model invents a new alias on each run.
+- Check each new model prompt with at least 3 live calls before you call it done. Stubbed-model tests only prove the shapes that we wrote ourselves. Record the latency, and set the timeout well above it.
 - Use only the target head for the chosen operation. Ignore the other heads.
 - Act only through the stored node reference from the snapshot. Never build a CSS selector from model output.
 - Check the guards (fingerprint, visible, enabled, not covered, allowed host) before each action.

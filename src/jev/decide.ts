@@ -69,6 +69,7 @@ export const describeElement = (e: Element) => ({
   ...(e.selected !== undefined && { selected: e.selected }),
   ...(e.expanded !== undefined && { expanded: e.expanded }),
   ...(e.pressed !== undefined && { pressed: e.pressed }),
+  ...(e.haspopup && { haspopup: e.haspopup }),
   ...(e.context && { context: e.context }),
 });
 

@@ -10,7 +10,8 @@
     await new Promise((resolve) => setTimeout(resolve, 50));
     root.innerHTML = '<h1>Opening balances</h1><div class="skeleton" aria-label="Loading"></div>';
     const queue = await (await fetch("/slow/queue.json")).json();
-    root.innerHTML = `<h1>Opening balances</h1><p>${queue.length} left</p><h2>${queue[0]}</h2>
+    root.innerHTML = `<header><button type="button" aria-haspopup="menu" aria-expanded="false">DS</button></header>
+      <h1>Opening balances</h1><p>${queue.length} left</p><h2>${queue[0]}</h2>
       <label for="amount">Owed at takeover</label><input id="amount" value="0.00">
       <button type="button" id="save">Save and next</button>`;
     document.getElementById("save").onclick = () => {
