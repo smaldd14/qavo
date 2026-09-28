@@ -140,6 +140,26 @@ All env-resolved values are sensitive, including values entered into non-passwor
 
 Runs with env references omit screenshots because the application can display secrets anywhere on the page. Runs without env references retain screenshots. Keep all reports private.
 
+## Agent CLI
+
+`qavo browser` lets a coding agent (Claude Code, Cursor) check its own change in the running app. The agent does the reasoning. qavo only runs the browser, so no model runs inside it. A driver process keeps one browser page open between commands:
+
+```sh
+qavo browser start http://localhost:5173 --storage-state ~/.qavo/sessions/localhost%3A5173.json
+qavo browser snapshot                  # elements with indices, visible text, fingerprint
+qavo browser type 4 "125.50"
+qavo browser click 7                   # the result lists the page text that changed
+qavo browser screenshot /tmp/proof.png
+qavo browser stop
+```
+
+The commands are `start`, `stop`, `status`, `doctor`, `open`, `snapshot`, `click`, `type`, `select`, `press`, `scroll`, `wait-settle`, and `screenshot`. `qavo browser <command> --help` has details and examples.
+
+- Each command prints one JSON object. A failure is `{ "ok": false, "error": { code, message, hint } }` with exit code 1, and the hint says what to run instead.
+- Actions take an element index from the snapshot, never a selector. Before each action, the driver checks the same guards as `qavo run`: the fingerprint of the last snapshot (or `--fp`), and a target that is visible, enabled, not covered, and in `allowHosts`. `--dry-run` runs the guards with no input.
+- A password field accepts text only from `--env NAME`. Output never repeats typed text.
+- `--name` (or `QAVO_DRIVER`) picks a driver, so each checkout or task can have its own browser. Driver files are in `~/.qavo/drivers/<name>/` (or `$QAVO_HOME`). A driver stops after 30 idle minutes.
+
 ## Artifact output
 
 Use `qavo run scenario.json --out /absolute/artifact-directory` for a persistent local destination. Each run creates `runs/<id>/` there. Without `--out`, the operating system can remove the temporary files later.
