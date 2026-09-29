@@ -80,7 +80,9 @@ A coding agent (Claude Code, Cursor) verifies its own change in the running app.
 - Output is one JSON object on stdout. An error has a `code`, a `message`, and a `hint` that says what to run instead. `--help` on each command has examples.
 - Actions take a snapshot index, never a selector. They check the same guards as the Jev loop against the fingerprint of the last snapshot (or `--fp`). `--dry-run` runs the guards and names the target without input.
 - A password field accepts text only from `--env NAME`. Output never echoes typed text.
-- **Done when:** an offline test drives `spa.html` through the real binary (start, snapshot after the skeleton, type, click, a stale refusal, screenshot, stop), and an agent verifies one change in pm-agent with only `qavo browser`.
+- Other people install it with `npm install -g github:smaldd14/qavo`, with no build step. `bin/qavo.js` refuses Node older than 24 with a clear error.
+- The skill `skills/qavo-browser/` (`SKILL.md` and `reference.md`) is how an agent on another machine learns the tool. The repo is also a Claude Code plugin marketplace, so `/plugin install qavo@qavo` installs the skill.
+- **Done when:** an offline test drives `spa.html` through the real binary (start, snapshot after the skeleton, type, click, a stale refusal, screenshot, stop), a clean `npm install -g` from the tarball runs a session, the plugin installs the skill, and an agent verifies one change in pm-agent with only `qavo browser`.
 
 ### Later (only when Stage 0 data shows a need)
 HTML report, Playwright test export for passed runs, the Claude rescuer, a planner from a PR, a login for each role, context providers, and CI `check-pr`.

@@ -19,6 +19,8 @@ Read `CONTEXT.md` for the terms. Read `docs/plan.md` for the current iteration.
 - Each command prints one JSON object. A new error needs a `code` and a `hint` that names the command to run instead.
 - `qavo browser` must not import the Jev runner or load `playwright-core` outside the driver process. Each command should start in about 300 ms.
 - A change to the driver needs a test in `test/driver.test.ts` that runs the real binary.
+- People on other machines use `qavo browser` with no other help than `skills/qavo-browser/`. A change to a command, an option, an output field, or an error code must update `SKILL.md` or `reference.md` in the same commit. `test/docs.test.ts` checks the command and error names.
+- Users install with `npm install -g github:smaldd14/qavo`, not from a checkout. A change to `bin/`, `package.json`, or a file path must pass a clean install: `npm pack`, then `npm install -g --prefix <temp dir> <tarball>`, then a `start`, `snapshot`, and `stop` with that binary.
 
 ## Credentials
 

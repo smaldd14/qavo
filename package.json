@@ -1,12 +1,24 @@
 {
   "name": "qavo",
   "version": "0.0.0",
-  "description": "A QA agent that drives a real browser with Jev choices.",
+  "description": "A browser CLI for coding agents to verify UI changes, and a QA runner for plain-language scenarios.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/smaldd14/qavo.git"
+  },
   "type": "module",
   "bin": {
     "qavo": "./bin/qavo.js"
   },
+  "files": [
+    "bin",
+    "src",
+    "skills",
+    "examples",
+    ".env.example",
+    "CONTEXT.md"
+  ],
   "engines": {
     "node": ">=24"
   },

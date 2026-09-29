@@ -40,4 +40,6 @@
 
 **Driver.** A long-lived process that owns one browser page for `qavo browser` commands. A coding agent sends it one command at a time, for example `snapshot`, then `click 7`. The driver holds no model. Each driver has a name and a directory `~/.qavo/drivers/<name>/` with its socket, log, and screenshots.
 
+**Skill.** The `skills/qavo-browser/` folder. It tells a coding agent when and how to use `qavo browser`. `reference.md` in it is the full reference for commands, fields, and error codes.
+
 **allowHosts.** The hosts that the browser can visit. A navigation to another host stops the step as `blocked`.

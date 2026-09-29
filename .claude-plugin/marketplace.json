@@ -1,0 +1,14 @@
+{
+  "name": "qavo",
+  "description": "The qavo plugin for Claude Code.",
+  "owner": {
+    "name": "smaldd14"
+  },
+  "plugins": [
+    {
+      "name": "qavo",
+      "source": "./",
+      "description": "Verify web UI changes in the running app with the qavo browser CLI."
+    }
+  ]
+}
