@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Overlay</title></head>
+<body>
+  <h1>Invoices</h1>
+  <button type="button">Save invoice</button>
+  <error-overlay></error-overlay>
+  <script>
+    // Like the Vite error overlay: a full-screen custom element whose text is in an open shadow root. Escape closes it.
+    customElements.define("error-overlay", class extends HTMLElement {
+      connectedCallback() {
+        this.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10";
+        this.attachShadow({ mode: "open" }).innerHTML = "<pre>Build failed: missing export 'total' in invoice.ts</pre>";
+      }
+    });
+    addEventListener("keydown", (event) => {
+      if (event.key === "Escape") document.querySelector("error-overlay")?.remove();
+    });
+  </script>
+</body>
+</html>

@@ -133,11 +133,31 @@
 
   const inViewport = ({ x, y }) => x >= 0 && y >= 0 && x < innerWidth && y < innerHeight;
 
-  const isCovered = (e) => {
+  // Returns the element on top of e's center, or null when e is on top (or outside the viewport).
+  const coverOf = (e) => {
     const point = center(e);
-    if (!inViewport(point)) return false;
+    if (!inViewport(point)) return null;
     const hit = document.elementFromPoint(point.x, point.y);
-    return !!hit && !e.contains(hit) && !(e.labels && [...e.labels].some((l) => l.contains(hit)));
+    return hit && !e.contains(hit) && !(e.labels && [...e.labels].some((l) => l.contains(hit))) ? hit : null;
+  };
+
+  // Names the layer that covers most controls, for example a dev server error overlay, so that an empty
+  // element list has a reason. The layer is the highest ancestor of the covering element that does not hold the control.
+  const coverSummary = (elements) => {
+    const layers = new Map();
+    for (const { node, covered } of elements) {
+      if (!covered) continue;
+      let layer = covered;
+      while (layer.parentElement && layer.parentElement !== document.body && !layer.parentElement.contains(node)) layer = layer.parentElement;
+      layers.set(layer, (layers.get(layer) ?? 0) + 1);
+    }
+    if (layers.size === 0) return undefined;
+    const [layer] = [...layers].sort((a, b) => b[1] - a[1])[0];
+    const text = (layer.shadowRoot?.textContent ?? layer.innerText ?? "").replace(/\s+/g, " ").trim();
+    return {
+      count: [...layers.values()].reduce((sum, count) => sum + count, 0),
+      by: { tag: layer.tagName.toLowerCase(), ...(roleOf(layer) && { role: roleOf(layer) }), ...(text && { text: text.slice(0, CONTEXT_LIMIT) }) },
+    };
   };
 
   // Returns every listed control. `covered` controls stay in the fingerprint, so that an overlay
@@ -182,7 +202,7 @@
       } else {
         element.operations = ["CLICK"];
       }
-      elements.push({ element, covered: isCovered(e) });
+      elements.push({ element, node: e, covered: coverOf(e) });
     }
     return { elements, omitted };
   };
@@ -222,12 +242,14 @@
 
   const snapshot = () => {
     const { elements, omitted } = readElements();
+    const covered = coverSummary(elements);
     return {
       url: location.href,
       title: document.title,
       text: readText(),
       elements: elements.filter(({ covered }) => !covered).map(({ element }) => element),
       omitted,
+      ...(covered && { covered }),
       scroll: { y: Math.round(scrollY), max: Math.max(0, document.documentElement.scrollHeight - innerHeight) },
       fingerprint: fingerprintOf(elements),
     };
@@ -247,7 +269,7 @@
       if (!option || option.disabled || option.closest("optgroup[disabled]")) return { refused: "option" };
     }
     if (!inViewport(center(e))) e.scrollIntoView({ block: "center", inline: "center" });
-    if (isCovered(e)) return { refused: "covered" };
+    if (coverOf(e)) return { refused: "covered" };
     const { x, y } = center(e);
     const link = e.closest("a[href]");
     return {

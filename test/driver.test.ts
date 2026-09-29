@@ -198,7 +198,7 @@ describe("qavo browser network, console, and eval", { timeout: 60_000 }, () => {
   test("eval returns a JSON value and does not count as an action", async () => {
     expect(await observe(["eval", "document.title"])).toMatchObject({ ok: true, value: "Orders", pageChanged: false });
     expect(await observe(["eval", "[...document.querySelectorAll('button')].map((b) => b.textContent)"])).toMatchObject({
-      value: ["Save", "Save to broken API", "Crash", "Log in"],
+      value: ["Save", "Save to broken API", "Crash", "Log in", "Search and cancel"],
     });
     expect(await observe(["eval", "document.querySelector('h1')"])).toMatchObject({ value: "<h1>" });
 
@@ -225,6 +225,42 @@ describe("qavo browser network, console, and eval", { timeout: 60_000 }, () => {
     expect(JSON.stringify(detail)).toContain("***");
     expect(JSON.stringify(detail)).not.toContain("pw-s3cret-42");
     expect(await observe(["eval", "document.getElementById('pw').value"])).toMatchObject({ value: "***" });
+  });
+
+  test("a request that the app cancels is aborted, not failed", async () => {
+    const canceled = await clickNamed("Search and cancel");
+    expect(canceled).toMatchObject({ ok: true, network: { aborted: 1, failed: [] } });
+    const [search] = (await observe(["network", "--last-action"])).requests as NetworkEntry[];
+    expect(search).toMatchObject({ url: `${server.url}/slow/queue.json`, failure: "net::ERR_ABORTED" });
+    expect((await observe(["network", "--failed", "--last-action"])).requests).toEqual([]);
+  });
+
+  test("a click reports the target's state after the action", async () => {
+    await observe(["open", "/form.html"]);
+    const clicked = await clickNamed("Send me the newsletter");
+    expect(clicked).toMatchObject({ ok: true, target: { name: "Send me the newsletter", after: { checked: true } } });
+  });
+
+  test("hundreds of static requests do not push the app's requests out", async () => {
+    await observe(["open", "/assets.html"]);
+    await clickNamed("Load report");
+    const urls = ((await observe(["network", "--limit", "1000"])).requests as NetworkEntry[]).map((entry) => entry.url);
+    expect(urls).toContain(`${server.url}/api.html`);
+    expect(urls).toContain(`${server.url}/assets.html`);
+    expect(urls.filter((url) => url.includes("/asset/"))).toEqual([]);
+    const all = (await observe(["network", "--all", "--limit", "1000"])).requests as NetworkEntry[];
+    expect(all.filter((entry) => entry.url.includes("/asset/")).length).toBeGreaterThan(400);
+  });
+
+  test("a snapshot names the layer that covers the controls, and closing it counts as a change", async () => {
+    await observe(["open", "/overlay.html"]);
+    const covered = await snapshot();
+    expect(covered.elements).toEqual([]);
+    expect(covered.covered).toMatchObject({ count: 1, by: { tag: "error-overlay", text: "Build failed: missing export 'total' in invoice.ts" } });
+
+    const closed = await observe(["press", "Escape"]);
+    expect(closed).toMatchObject({ ok: true, pageChanged: true, elements: 1 });
+    expect(closed.covered).toBeUndefined();
   });
 
   test("network with an unknown id says how to list the ids", async () => {

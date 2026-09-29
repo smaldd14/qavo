@@ -21,6 +21,10 @@ export async function serveFixtures(port = 0) {
       path = path.slice("/slow".length);
       await new Promise((resolve) => setTimeout(resolve, 400));
     }
+    // /asset/<n>.svg is a tiny image, for pages that load hundreds of static files.
+    if (path.startsWith("/asset/")) {
+      return response.writeHead(200, { "content-type": "image/svg+xml" }).end('<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>');
+    }
     const file = join(FIXTURES, path === "/" ? "index.html" : path);
     if (!file.startsWith(FIXTURES)) return response.writeHead(403).end();
     const body = await readFile(file).catch(() => null);

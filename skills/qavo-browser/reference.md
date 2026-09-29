@@ -101,13 +101,14 @@ Each command prints exactly one JSON object on stdout.
 | `elements[].operations` | The commands that the element accepts: `CLICK`, `TYPE_TEXT`, or `SELECT`. |
 | `elements[].options` | For `SELECT`: each option's `value` and `label`. Pass the `value`. |
 | `omitted` | The number of controls after the first 250. If it is not 0, the page has more controls than the snapshot shows. |
+| `covered` | Only when another layer covers controls: `count` of covered controls, and `by`, the layer that covers most of them, with its `tag`, `role`, and `text`. For example, a dev server error overlay: `{ "count": 21, "by": { "tag": "vite-error-overlay", "text": "Network connection lost. ..." } }`. The text includes an open shadow root. |
 | `scroll` | The scroll position `y` and the largest position `max`. |
 | `fingerprint` | A hash of the URL, the form values, and the controls. Actions check it. |
 
 Rules for elements:
 
 - When a dialog is open, the snapshot lists only the controls inside the top dialog.
-- An element that another element covers (a toast, a sticky header, an overlay) is not in `elements`.
+- An element that another element covers (a toast, a sticky header, an overlay) is not in `elements`. The `covered` field says what covers it. An empty `elements` list with `covered` means that a layer covers the page: read `covered.by.text`, then close the layer (often `press Escape`) or fix its cause.
 - Elements below the fold are in the snapshot. You do not need to scroll to act on them.
 - An index stays the same for the same element until the page reloads. A new element gets a new index. After a navigation, take a new snapshot before you use an index.
 
@@ -118,23 +119,25 @@ An action waits until the page settles and returns a short summary, not the full
 ```json
 {
   "ok": true,
-  "target": { "index": 3, "role": "button", "name": "Save and next" },
+  "target": { "index": 3, "role": "button", "name": "Save and next", "after": {} },
   "url": "http://127.0.0.1:4173/spa.html",
   "title": "Queue",
   "fingerprint": "669364f5",
   "elements": 3,
   "pageChanged": true,
   "changes": { "removed": ["2 left", "112 Automotive Blvd"], "added": ["1 left", "21 Aberdeen Ave"] },
-  "network": { "requests": 1, "failed": [] },
+  "network": { "requests": 1, "aborted": 0, "failed": [] },
   "console": { "errors": 0, "warnings": 0, "messages": [] }
 }
 ```
 
-- `pageChanged` is `true` when the fingerprint or the text changed.
+- `target.after` is the target's state after the action: `checked`, `selected`, `expanded`, `pressed`, and `value` (not after `type`). For example, a switch that the click turned off has `"after": { "checked": false }`. It is `null` when the target is no longer on the page. Read it: a toggle often changes no page text.
+- `pageChanged` is `true` when the fingerprint, the number of elements, or the text changed.
+- `covered` is present when a layer covers controls, as in a snapshot.
 - `changes` lists up to 8 text lines that the action removed and added. It is absent when no text changed. This is the fastest way to see what an action did.
 - `elements` is a count. To see new elements, run `snapshot`.
 - `fingerprint` becomes the fingerprint for the next action. You can do several actions in a row without a snapshot, as long as you act on elements that you already know.
-- `network` counts the app requests that the action caused (document, fetch, XHR, WebSocket, EventSource) and lists up to 5 that failed. A request failed when it has a `failure` or a status of 400 or more.
+- `network` counts the app requests that the action caused (document, fetch, XHR, WebSocket, EventSource) and lists up to 5 that failed. A request failed when it has a `failure` other than `net::ERR_ABORTED`, or a status of 400 or more. `aborted` counts requests that the browser or the app canceled, for example a query that React cancels on navigation. Those are not failures.
 - `console` counts the errors and warnings that the action caused and shows up to 3 errors. An uncaught exception has the level `pageerror`.
 - `type` adds `typed: { characters, env? }`. It never shows the typed text.
 
@@ -188,7 +191,7 @@ The driver also blocks each main-frame navigation to a host outside `allowHosts`
 
 ## Network
 
-The driver records each request that the page makes, from the start of the driver. It keeps the last 500.
+The driver records each request that the page makes, from the start of the driver. It keeps the last 500 app requests (document, fetch, XHR, WebSocket, EventSource) and, in a separate list, the last 500 other requests (scripts, styles, images, fonts). A dev server can load hundreds of modules on each page, and they cannot push the app's calls out.
 
 ```sh
 qavo browser network --last-action      # the requests that the last action made
@@ -208,7 +211,7 @@ qavo browser network 42                 # one request with its bodies
 | `id` | The number to pass to `network <id>`. Requests and console messages share one sequence. |
 | `type` | The resource type: `document`, `fetch`, `xhr`, `websocket`, `eventsource`, `script`, `stylesheet`, `image`, `font`, and others. |
 | `status` | The HTTP status. |
-| `failure` | Why the request did not complete, for example `net::ERR_CONNECTION_REFUSED` or `net::ERR_ABORTED`. |
+| `failure` | Why the request did not complete, for example `net::ERR_CONNECTION_REFUSED`. `net::ERR_ABORTED` means that the request was canceled. It is not listed by `--failed`. |
 | `durationMs` | The time from the request to its end. A request with `pending: true` has not ended. |
 | `cursor` | The last id so far. Pass it as `--since <cursor>` to list only newer entries. |
 | `omitted` | The count of matches before the last `--limit` entries. |

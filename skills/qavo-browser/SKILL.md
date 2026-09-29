@@ -34,6 +34,7 @@ Use a `--name` for your task (for example the branch name) so that you do not ta
 3. **Snapshot.** Read `text` and `elements`. Pick the element by `role`, `name`, and `context`. Never guess an index; take it from the latest snapshot.
 4. **Act** with `click`, `type`, `select`, or `press`. Read the result:
    - `changes.added` and `changes.removed` show which text lines the action changed. Use them to confirm the effect.
+   - `target.after` shows the target's state after the action, for example `checked: false` for a switch. A toggle often changes no text, so read this field.
    - `network.failed` lists requests that failed or returned 400 or more. `console.errors` counts errors and uncaught exceptions. A change is not verified if its action caused either, even when the page looks right.
    - `pageChanged: false` means that the action did nothing visible. Check `network` and `console` for the cause, take a snapshot, and think again. Do not repeat the same action more than once.
 5. **Check the data, not only the screen.** When the change saves or loads data, run `qavo browser network --last-action`, then `qavo browser network <id>` on the call. Confirm the method, the URL, the status, and the fields in the request and response bodies.
@@ -50,7 +51,8 @@ Use a `--name` for your task (for example the branch name) so that you do not ta
 - Read the state before you toggle: a switch with `checked: true` is already on.
 - Two elements can have the same name (for example "Edit" in each table row). Use `context` to pick the right one.
 - For a password or other secret, use `type <index> --env NAME`. Never put a secret in a command line. Ask the user for the variable name if you do not know it.
-- If an element that you expect is missing, check `omitted`, try `scroll down` and `snapshot`, and check for a closed menu or tab.
+- If an element that you expect is missing, check `covered` first: a layer such as a dev server error overlay or a modal can cover the page. `covered.by.text` says what it is. Then check `omitted`, try `scroll down` and `snapshot`, and check for a closed menu or tab.
+- A dev server error overlay is a finding: report its text, and look for its cause with `network --failed` and `console --level error`.
 - `network` output has no headers, but bodies can hold customer data. Quote only the fields that you need in your report.
 - `qavo browser` cannot upload files, hover, drag, use iframes, or follow a new tab. If the check needs one of these, tell the user that you could not verify that part.
 
