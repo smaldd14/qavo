@@ -32,6 +32,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await qavo(["stop"]);
   await qavo(["stop", "--name", "crash"]);
+  await qavo(["stop", "--name", "observe"]);
   await server?.close();
   await rm(home, { recursive: true, force: true });
 });
@@ -142,6 +143,93 @@ describe("qavo browser", { timeout: 60_000 }, () => {
     expect((await qavo(["stop", "--name", "crash", "--dry-run"])).json).toMatchObject({ ok: true, dryRun: true, wouldRemove: [join(dir, "driver.sock"), join(dir, "state.json")] });
     expect(existsSync(join(dir, "driver.sock"))).toBe(true);
     await qavo(["stop", "--name", "crash"]);
+  await qavo(["stop", "--name", "observe"]);
     expect(existsSync(join(dir, "driver.sock"))).toBe(false);
+  });
+});
+
+type Json = Record<string, unknown> & { ok: boolean; error?: { code: string; hint?: string } };
+type NetworkEntry = { id: number; method: string; url: string; status?: number; failure?: string };
+
+describe("qavo browser network, console, and eval", { timeout: 60_000 }, () => {
+  const observe = async (args: string[], env: Record<string, string> = {}) => (await qavo(args, { QAVO_DRIVER: "observe", ...env })).json as Json;
+  const clickNamed = async (name: string) => observe(["click", String(indexOf(await snapshot(), name))]);
+  const snapshot = async () => (await observe(["snapshot"])) as unknown as Snapshot;
+
+  beforeAll(async () => {
+    expect((await observe(["start", `${server.url}/api.html`])).ok).toBe(true);
+  });
+
+  test("an action result counts its requests, and network shows the calls with status", async () => {
+    await observe(["type", String(indexOf(await snapshot(), "Note")), "rush order"]);
+    const saved = await clickNamed("Save");
+    expect(saved).toMatchObject({ ok: true, network: { requests: 1, failed: [] }, console: { errors: 0 } });
+
+    const network = await observe(["network", "--last-action"]);
+    const calls = network.requests as NetworkEntry[];
+    expect(calls).toEqual([expect.objectContaining({ method: "POST", url: `${server.url}/api/echo`, status: 200 })]);
+
+    const detail = await observe(["network", String(calls[0]!.id)]);
+    expect(detail).toMatchObject({ ok: true, request: { method: "POST", status: 200, requestBody: '{"note":"rush order"}' } });
+    expect(String((detail.request as Record<string, unknown>).responseBody)).toContain("rush order");
+    expect(JSON.stringify(detail)).not.toContain("header-token");
+  });
+
+  test("a failed call and a console error show in the action result", async () => {
+    const broken = await clickNamed("Save to broken API");
+    expect(broken).toMatchObject({
+      ok: true,
+      network: { failed: [expect.objectContaining({ method: "POST", url: `${server.url}/api/fail`, status: 500 })] },
+      console: { errors: 1, messages: [expect.objectContaining({ level: "error", text: "Save failed: Database is down" })] },
+    });
+    expect((await observe(["network", "--failed"])).requests).toHaveLength(1);
+  });
+
+  test("an uncaught page error shows in the action result and in console", async () => {
+    const crashed = await clickNamed("Crash");
+    expect(crashed).toMatchObject({ console: { errors: 1, messages: [expect.objectContaining({ level: "pageerror", text: expect.stringContaining("Cannot read the order total") })] } });
+
+    const errors = await observe(["console", "--level", "error"]);
+    expect((errors.messages as { level: string }[]).map((m) => m.level)).toEqual(["error", "pageerror"]);
+    const all = await observe(["console"]);
+    expect(all.messages).toContainEqual(expect.objectContaining({ level: "log", text: "Orders page ready" }));
+  });
+
+  test("eval returns a JSON value and does not count as an action", async () => {
+    expect(await observe(["eval", "document.title"])).toMatchObject({ ok: true, value: "Orders", pageChanged: false });
+    expect(await observe(["eval", "[...document.querySelectorAll('button')].map((b) => b.textContent)"])).toMatchObject({
+      value: ["Save", "Save to broken API", "Crash", "Log in"],
+    });
+    expect(await observe(["eval", "document.querySelector('h1')"])).toMatchObject({ value: "<h1>" });
+
+    const bad = await observe(["eval", "let x = 1; x"]);
+    expect(bad).toMatchObject({ ok: false, error: { code: "eval_failed" } });
+    expect(bad.error!.hint).toContain("=>");
+  });
+
+  test("an eval that changes the page says so, and the next action must snapshot again", async () => {
+    const state = await snapshot();
+    const changed = await observe(["eval", "document.getElementById('note').value = 'set by eval'"]);
+    expect(changed).toMatchObject({ ok: true, pageChanged: true });
+    expect(String(changed.warning)).toContain("snapshot");
+    const refused = await observe(["click", String(indexOf(state, "Save"))]);
+    expect(refused).toMatchObject({ ok: false, error: { code: "refused", reason: "stale" } });
+  });
+
+  test("a secret typed from --env is hidden in network bodies and eval output", async () => {
+    const env = { QAVO_TEST_PASSWORD: "pw-s3cret-42" };
+    await observe(["type", String(indexOf(await snapshot(), "Password")), "--env", "QAVO_TEST_PASSWORD"], env);
+    await clickNamed("Log in");
+    const [login] = (await observe(["network", "--last-action"])).requests as NetworkEntry[];
+    const detail = await observe(["network", String(login!.id)]);
+    expect(JSON.stringify(detail)).toContain("***");
+    expect(JSON.stringify(detail)).not.toContain("pw-s3cret-42");
+    expect(await observe(["eval", "document.getElementById('pw').value"])).toMatchObject({ value: "***" });
+  });
+
+  test("network with an unknown id says how to list the ids", async () => {
+    const missing = await observe(["network", "99999"]);
+    expect(missing).toMatchObject({ ok: false, error: { code: "not_found" } });
+    expect(missing.error!.hint).toContain("qavo browser network");
   });
 });

@@ -9,6 +9,13 @@ const FIXTURES = new URL("./fixtures/", import.meta.url).pathname;
 export async function serveFixtures(port = 0) {
   const server = createServer(async (request, response) => {
     let path = new URL(request.url ?? "/", "http://localhost").pathname;
+    // /api/echo returns the JSON body that it got. /api/fail returns 500, like a broken backend.
+    if (path === "/api/echo" || path === "/api/fail") {
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) chunks.push(chunk as Buffer);
+      const [status, body] = path === "/api/echo" ? [200, { received: JSON.parse(Buffer.concat(chunks).toString() || "null") }] : [500, { error: "Database is down" }];
+      return response.writeHead(status, { "content-type": "application/json" }).end(JSON.stringify(body));
+    }
     // /slow/<file> answers after 400 ms, like an API call.
     if (path.startsWith("/slow/")) {
       path = path.slice("/slow".length);

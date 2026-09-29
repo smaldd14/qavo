@@ -45,6 +45,12 @@ export type DriverOptions = z.infer<typeof DriverOptions>;
 
 const Index = z.number().int().positive();
 const Target = { index: Index, fingerprint: z.string().optional(), dryRun: z.boolean().default(false) };
+/** Which recorded events to list: after a cursor, or since the start of the last action. */
+const Since = {
+  since: z.number().int().nonnegative().optional(),
+  lastAction: z.boolean().default(false),
+  limit: z.number().int().positive().default(50),
+};
 
 /** One command sent to the driver over its socket. */
 export const Request = z.discriminatedUnion("command", [
@@ -65,5 +71,19 @@ export const Request = z.discriminatedUnion("command", [
   z.object({ command: z.literal("press"), key: z.string().min(1) }),
   z.object({ command: z.literal("scroll"), direction: z.enum(["up", "down"]) }),
   z.object({ command: z.literal("screenshot"), path: z.string().optional(), fullPage: z.boolean().default(false) }),
+  z.object({
+    command: z.literal("network"),
+    /** One request with its bodies. Without it, a list. */
+    id: Index.optional(),
+    failed: z.boolean().default(false),
+    all: z.boolean().default(false),
+    contains: z.string().optional(),
+    ...Since,
+  }),
+  z.object({ command: z.literal("console"), level: z.enum(["error", "warning", "all"]).default("all"), ...Since }),
+  /** Runs a JavaScript expression in the page to read state. It is not an action and passes no guards. */
+  z.object({ command: z.literal("eval"), expression: z.string().min(1) }),
 ]);
 export type Request = z.infer<typeof Request>;
+/** A request as the CLI sends it. The driver fills in the defaults. */
+export type RequestInput = z.input<typeof Request>;

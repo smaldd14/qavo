@@ -84,6 +84,17 @@ A coding agent (Claude Code, Cursor) verifies its own change in the running app.
 - The skill `skills/qavo-browser/` (`SKILL.md` and `reference.md`) is how an agent on another machine learns the tool. The repo is also a Claude Code plugin marketplace, so `/plugin install qavo@qavo` installs the skill.
 - **Done when:** an offline test drives `spa.html` through the real binary (start, snapshot after the skeleton, type, click, a stale refusal, screenshot, stop), a clean `npm install -g` from the tarball runs a session, the plugin installs the skill, and an agent verifies one change in pm-agent with only `qavo browser`.
 
+### 9. See the network and the console; read with eval
+A verification is not done when the page only looks right. The save can return 500, or the page can throw.
+
+- The driver records each request (method, URL, type, status, failure, time) and each console message and uncaught page error, with one id sequence. It keeps the last 500 of each.
+- Each action result and `open` add a `network` summary (app requests, failed requests) and a `console` summary (errors, warnings, the first errors).
+- `network [id]` lists requests (`--failed`, `--filter`, `--all`, `--last-action`, `--since`) or shows one with its bodies. Headers are never shown.
+- `console` lists messages by level. Chromium's own "Failed to load resource" errors are left out, because `network` has them.
+- `eval <expression>` reads page state as JSON. It is not an action: no guards, no fingerprint update, and `pageChanged` with a warning when it changed the page. There is no `click-xy`.
+- Each `--env` value is replaced by `***` in all of this output.
+- **Done when:** an offline test on `api.html` shows a 500 and a console error in an action result, a body in `network <id>` with the password hidden, a page error in `console`, and an eval that changes the page followed by a stale refusal.
+
 ### Later (only when Stage 0 data shows a need)
 HTML report, Playwright test export for passed runs, the Claude rescuer, a planner from a PR, a login for each role, context providers, and CI `check-pr`.
 

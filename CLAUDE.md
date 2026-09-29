@@ -15,7 +15,8 @@ Read `CONTEXT.md` for the terms. Read `docs/plan.md` for the current iteration.
 
 ## Agent CLI (`qavo browser`)
 
-- The driver holds no model. The agent that calls it is the model, so the rules above apply at the command line: actions take a snapshot index and pass the guards. Do not add a command that acts through a selector or `eval`.
+- The driver holds no model. The agent that calls it is the model, so the rules above apply at the command line: actions take a snapshot index and pass the guards. Do not add a command that acts through a selector or a screen position (`click-xy`).
+- `eval` is for reading. It must never update the fingerprint that actions check, and its result must report `pageChanged`. Do not add an option that makes `eval` count as an action.
 - Each command prints one JSON object. A new error needs a `code` and a `hint` that names the command to run instead.
 - `qavo browser` must not import the Jev runner or load `playwright-core` outside the driver process. Each command should start in about 300 ms.
 - A change to the driver needs a test in `test/driver.test.ts` that runs the real binary.
@@ -26,7 +27,8 @@ Read `CONTEXT.md` for the terms. Read `docs/plan.md` for the current iteration.
 
 - Credentials never reach a model. Password field values come only from `step.data`, and the report writes `***` for them.
 - Never send `storageState` files, cookies, or tokens to a model.
-- `qavo browser` output is read by a model. Never print a typed value, a password value, or an `--env` value.
+- `qavo browser` output is read by a model. Never print a typed value, a password value, or an `--env` value. New output that holds page or network data (`network`, `console`, `eval`) must go through the observer's `redact`.
+- `network` never prints request or response headers. They hold cookies and tokens.
 
 ## Public repo
 

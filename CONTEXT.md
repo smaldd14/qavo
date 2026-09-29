@@ -38,7 +38,7 @@
 
 **Scenario authoring.** The `qavo scenario new` command asks for the start URL first, then reads pasted text, a `.txt` file, or a `.docx` file. It shows the drafts and writes ordinary scenario JSON files after confirmation. It does not call a model, run scenarios, or resolve environment references.
 
-**Driver.** A long-lived process that owns one browser page for `qavo browser` commands. A coding agent sends it one command at a time, for example `snapshot`, then `click 7`. The driver holds no model. Each driver has a name and a directory `~/.qavo/drivers/<name>/` with its socket, log, and screenshots.
+**Driver.** A long-lived process that owns one browser page for `qavo browser` commands. A coding agent sends it one command at a time, for example `snapshot`, then `click 7`. The driver holds no model. It records the page's requests, console messages, and uncaught errors, and each action result reports those that the action caused. Each driver has a name and a directory `~/.qavo/drivers/<name>/` with its socket, log, and screenshots.
 
 **Skill.** The `skills/qavo-browser/` folder. It tells a coding agent when and how to use `qavo browser`. `reference.md` in it is the full reference for commands, fields, and error codes.
 

@@ -72,6 +72,15 @@ qavo browser click 3
  "url":"http://localhost:5173/queue","title":"Queue","fingerprint":"669364f5","elements":3}
 ```
 
+Each action result also has a `network` summary (the count of app requests and the failed ones) and a `console` summary (errors and warnings). For the details:
+
+```sh
+qavo browser network --last-action    # the requests that the click made, with status and time
+qavo browser network 12               # one request with its request and response bodies
+qavo browser console --level error    # console errors and uncaught exceptions
+qavo browser eval "localStorage.getItem('theme')"   # read state that the snapshot does not show
+```
+
 Keep evidence, then close the browser:
 
 ```sh
@@ -102,10 +111,12 @@ For a password field, the agent uses `qavo browser type <index> --env NAME`. The
 ### Rules that qavo enforces
 
 - Each command prints one JSON object. A failure is `{ "ok": false, "error": { "code", "message", "hint" } }` with exit code 1. The `hint` says what to run next.
-- Actions take an element index from a snapshot, never a selector.
+- Actions take an element index from a snapshot, never a selector or a screen position.
+- `eval` reads page state with a JavaScript expression. It is not an action: it passes no guards, and if it changes the page, the result says so and the next action needs a new snapshot.
+- `network` never shows request or response headers. Bodies can hold application data, so keep the output private.
 - Before each action, the driver checks that the page did not change since the last snapshot (the fingerprint), and that the target is visible, enabled, and not covered. `--dry-run` runs these checks with no input.
 - The page can visit only the hosts in `allowHosts`. By default, this is the host of the start URL. Add more with `--allow-host`.
-- A password field accepts text only from `--env NAME`. No output shows a typed value.
+- A password field accepts text only from `--env NAME`. No output shows a typed value, and each `--env` value shows as `***` in `network`, `console`, and `eval` output.
 
 ### Several agents at once
 
