@@ -42,4 +42,8 @@
 
 **Skill.** The `skills/qavo-browser/` folder. It tells a coding agent when and how to use `qavo browser`. `reference.md` in it is the full reference for commands, fields, and error codes.
 
+**Verification skill.** A `verify-<app>` skill in an app's repo, made by `create-verification-skill`. It tells an agent how to bring up that app, which features a change touches, and how to check them with `qavo browser`.
+
+**Feature map.** The `references/features/` folder of a verification skill: a `README.md` table and one file for each feature, with its code paths, steps, checks, gotchas, and the commit where an agent last drove it.
+
 **allowHosts.** The hosts that the browser can visit. A navigation to another host stops the step as `blocked`.

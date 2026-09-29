@@ -95,6 +95,15 @@ A verification is not done when the page only looks right. The save can return 5
 - Each `--env` value is replaced by `***` in all of this output.
 - **Done when:** an offline test on `api.html` shows a 500 and a console error in an action result, a body in `network <id>` with the password hidden, a page error in `console`, and an eval that changes the page followed by a stale refusal.
 
+### 10. A skill that creates a verification skill for any app
+qavo must work for apps that we do not know. `qavo-browser` knows the browser; each app also needs a skill that knows the app.
+
+- `skills/create-verification-skill/` writes `verify-<app>/` into the app's repo: `SKILL.md`, `references/dev-environment.md`, `references/sources.md`, and `references/features/` (a map and one file for each feature).
+- It runs in phases, and each phase ends with something that ran: tools, learn the app, bring it up and log in, import manual steps, build the map, drive each feature, write the skill, test the skill as a new agent.
+- Manual steps from Confluence or SharePoint are distilled into feature files in the repo, with the source URL and version in `sources.md`. The raw documents are not committed. A connector reads them when one is there; otherwise a person exports them.
+- Each feature file has `code` globs and `verified: <date> @ <commit>`. The verify skill finds features by the diff, finds stale files with `git log <commit>..HEAD -- <code>`, and updates the map in the same change.
+- **Done when:** the skill makes a `verify-<app>` skill for one app that we did not build, and a new agent with only that skill verifies one change in it.
+
 ### Later (only when Stage 0 data shows a need)
 HTML report, Playwright test export for passed runs, the Claude rescuer, a planner from a PR, a login for each role, context providers, and CI `check-pr`.
 

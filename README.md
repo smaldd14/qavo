@@ -38,9 +38,21 @@ The skill tells an agent when to use `qavo browser`, how to run the loop, and ho
   ```
 
   From a terminal, use `claude plugin marketplace add smaldd14/qavo` and `claude plugin install qavo@qavo`.
-- **Other agents.** Copy [`skills/qavo-browser/SKILL.md`](skills/qavo-browser/SKILL.md) into the agent's instructions, for example into `AGENTS.md` in your project. Tell the agent that the full reference is at <https://github.com/smaldd14/qavo/blob/main/skills/qavo-browser/reference.md>.
+- **Other agents.** Copy [`skills/qavo-browser/SKILL.md`](skills/qavo-browser/SKILL.md) (and [`skills/create-verification-skill/`](skills/create-verification-skill/SKILL.md) if you want it) into the agent's instructions, for example into `AGENTS.md` in your project. Tell the agent that the full reference is at <https://github.com/smaldd14/qavo/blob/main/skills/qavo-browser/reference.md>.
 
 Then ask the agent to verify a change, for example: "Check in the browser that the Save button on /settings keeps the new email."
+
+### Create a verification skill for your app
+
+`qavo-browser` knows the browser, not your app. The plugin also has `create-verification-skill`, which writes a `verify-<app>` skill into your repo. Run it once in your app's repo, for example with `/qavo:create-verification-skill` in Claude Code. The agent:
+
+1. Finds how to install, seed, start, and log in to your app, runs it, and records the commands that worked.
+2. Imports your team's manual test steps from Confluence, SharePoint, Google Docs, or exported files. It keeps the steps, and it leaves out credentials and customer data.
+3. Builds a feature map: one file for each feature, with how to reach it, the `qavo browser` steps, what to check, the code paths, and the gotchas.
+4. Drives each feature to prove the steps, and marks it verified with a date and a commit.
+5. Writes `verify-<app>/SKILL.md`, which later agents use to find the features that a diff touches, verify them, and update the map in the same change.
+
+The team's documents stay where they are. The skill keeps distilled steps in the repo, with a link and a version for each source, so that an agent with no access to Confluence or SharePoint can still verify, and a reviewer sees step changes next to code changes.
 
 ### A session by hand
 
