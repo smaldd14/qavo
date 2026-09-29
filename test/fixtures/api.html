@@ -10,6 +10,7 @@
   <button type="button" id="break">Save to broken API</button>
   <button type="button" id="crash">Crash</button>
   <button type="button" id="login">Log in</button>
+  <button type="button" id="cancel">Search and cancel</button>
   <script>
     // An app that talks to an API: one call that works, one that returns 500, and one uncaught error.
     console.log("Orders page ready");
@@ -34,6 +35,13 @@
     document.getElementById("login").onclick = async () => {
       await post("/api/echo", { password: document.getElementById("pw").value });
       status.textContent = "Logged in";
+    };
+    document.getElementById("cancel").onclick = async () => {
+      const controller = new AbortController();
+      const search = fetch("/slow/queue.json", { signal: controller.signal }).catch(() => undefined);
+      setTimeout(() => controller.abort(), 50);
+      await search;
+      status.textContent = "Search canceled";
     };
   </script>
 </body>

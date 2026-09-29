@@ -25,6 +25,8 @@ export interface Snapshot {
   text: string;
   elements: Element[];
   omitted: number;
+  /** Controls that another layer covers, and the layer that covers most of them. */
+  covered?: { count: number; by: { tag: string; role?: string; text?: string } };
   scroll: { y: number; max: number };
   fingerprint: string;
 }

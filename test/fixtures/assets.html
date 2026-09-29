@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Assets</title></head>
+<body>
+  <h1>Dashboard</h1>
+  <p id="status">Idle</p>
+  <button type="button" id="load">Load report</button>
+  <div id="icons"></div>
+  <script>
+    // Like a dev server that serves each module as its own request: 600 static requests on load.
+    const icons = document.getElementById("icons");
+    for (let i = 0; i < 600; i++) {
+      const img = document.createElement("img");
+      img.src = `/asset/${i}.svg`;
+      img.width = img.height = 1;
+      img.alt = "";
+      icons.append(img);
+    }
+    document.getElementById("load").onclick = async () => {
+      await fetch("/api/echo", { method: "POST", body: JSON.stringify({ report: "monthly" }) });
+      document.getElementById("status").textContent = "Loaded";
+    };
+  </script>
+</body>
+</html>

@@ -195,7 +195,12 @@ export async function serveDriver(paths: DriverPaths, options: DriverOptions) {
       const before = await snapshot(page);
       const cursor = observer.cursor();
       await act(page, action, guard);
-      return afterAction(before, cursor, { target });
+      const result = await afterAction(before, cursor, { target });
+      // The state that the action was for, for example a switch that is now off, is often not in the page text.
+      const after = last!.elements.find((element) => element.index === target.index);
+      // After `type`, the value is the typed text, which output never repeats.
+      const state = after && stateOf(action.operation === "TYPE_TEXT" ? { ...after, value: undefined } : after);
+      return { ...result, target: { ...target, after: state ?? null } };
     } catch (error) {
       if (!(error instanceof Refused)) throw error;
       throw new DriverError("refused", error.message, REFUSAL_HINTS[error.reason], { reason: error.reason, target });
@@ -207,8 +212,10 @@ export async function serveDriver(paths: DriverPaths, options: DriverOptions) {
     lastActionCursor = cursor;
     last = await settledSnapshot(page);
     const changes = textChanges(before.text, last.text);
+    // An overlay that covers or uncovers controls changes the element count, not the fingerprint.
+    const pageChanged = last.fingerprint !== before.fingerprint || last.elements.length !== before.elements.length || changes !== undefined;
     return {
-      ...detail, ...summary(last), pageChanged: last.fingerprint !== before.fingerprint || changes !== undefined, ...(changes && { changes }),
+      ...detail, ...summary(last), pageChanged, ...(changes && { changes }),
       ...observer.activity(cursor),
     };
   };
@@ -246,7 +253,14 @@ export async function serveDriver(paths: DriverPaths, options: DriverOptions) {
   resetIdle();
 }
 
-const summary = (state: Snapshot) => ({ url: state.url, title: state.title, fingerprint: state.fingerprint, elements: state.elements.length });
+const summary = (state: Snapshot) => ({
+  url: state.url, title: state.title, fingerprint: state.fingerprint, elements: state.elements.length,
+  ...(state.covered && { covered: state.covered }),
+});
+
+/** The state fields of an element. The value of a sensitive field is never included (the snapshot has none). */
+const stateOf = ({ value, checked, selected, expanded, pressed }: Snapshot["elements"][number]) =>
+  Object.fromEntries(Object.entries({ value, checked, selected, expanded, pressed }).filter(([, field]) => field !== undefined));
 
 const describe = (page: Page, index: number) => page.evaluate<Target | null>(`${PAGE_SCRIPT}\nwindow.__qavo.describe(${index})`);
 

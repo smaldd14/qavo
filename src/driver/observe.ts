@@ -22,7 +22,9 @@ export type NetworkEntry = {
 
 export type ConsoleEntry = { id: number; level: string; text: string; location?: string };
 
-const isFailed = (entry: NetworkEntry) => entry.failure !== undefined || (entry.status ?? 0) >= 400;
+/** The browser cancels a request when the page navigates or the app aborts it, for example a query on unmount. That is not a failure. */
+const ABORTED = "net::ERR_ABORTED";
+const isFailed = (entry: NetworkEntry) => (entry.failure !== undefined && entry.failure !== ABORTED) || (entry.status ?? 0) >= 400;
 
 /**
  * Records the page's requests, console messages, and uncaught errors, with one id sequence for both.
@@ -30,7 +32,9 @@ const isFailed = (entry: NetworkEntry) => entry.failure !== undefined || (entry.
  */
 export function observe(page: Page) {
   let lastId = 0;
+  // Two lists, so that the hundreds of modules that a dev server serves cannot push the app's calls out.
   const requests: NetworkEntry[] = [];
+  const assets: NetworkEntry[] = [];
   const handles = new Map<number, Request>();
   const entries = new Map<Request, NetworkEntry & { startedAt: number }>();
   const messages: ConsoleEntry[] = [];
@@ -53,7 +57,7 @@ export function observe(page: Page) {
     const entry = { id: ++lastId, method: request.method(), url: request.url(), type: request.resourceType(), startedAt: Date.now() };
     entries.set(request, entry);
     handles.set(entry.id, request);
-    keep(requests, entry);
+    keep(APP_TYPES.has(entry.type) ? requests : assets, entry);
   });
   const finish = (request: Request, update: Partial<NetworkEntry>) => {
     const entry = entries.get(request);
@@ -98,12 +102,13 @@ export function observe(page: Page) {
 
     /** A short account of what happened after `since`, for an action result. */
     activity(since: number) {
-      const newRequests = requests.filter((entry) => entry.id > since);
+      const newRequests = [...requests, ...assets].filter((entry) => entry.id > since).sort((a, b) => a.id - b.id);
       const newMessages = messages.filter((message) => message.id > since);
       const errors = newMessages.filter(isError);
       return {
         network: {
           requests: newRequests.filter((entry) => APP_TYPES.has(entry.type)).length,
+        aborted: newRequests.filter((entry) => entry.failure === ABORTED).length,
           failed: newRequests.filter(isFailed).slice(0, FAILED_IN_SUMMARY).map(showRequest),
         },
         console: {
@@ -115,9 +120,8 @@ export function observe(page: Page) {
     },
 
     listRequests(filter: { since: number; failed: boolean; all: boolean; contains?: string; limit: number }) {
-      const matches = requests.filter((entry) =>
+      const matches = [...requests, ...(filter.all ? assets : assets.filter(isFailed))].sort((a, b) => a.id - b.id).filter((entry) =>
         entry.id > filter.since
-        && (filter.all || APP_TYPES.has(entry.type) || isFailed(entry))
         && (!filter.failed || isFailed(entry))
         && (filter.contains === undefined || entry.url.includes(filter.contains)));
       return { requests: matches.slice(-filter.limit).map(showRequest), ...(matches.length > filter.limit && { omitted: matches.length - filter.limit }), cursor: lastId };
@@ -132,7 +136,7 @@ export function observe(page: Page) {
 
     /** One request with its bodies. Headers are left out, because they can hold tokens and cookies. */
     async requestDetail(id: number) {
-      const entry = requests.find((candidate) => candidate.id === id);
+      const entry = [...requests, ...assets].find((candidate) => candidate.id === id);
       const request = handles.get(id);
       if (!entry || !request) return undefined;
       const response = await request.response().catch(() => null);
