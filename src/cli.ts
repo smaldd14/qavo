@@ -3,14 +3,14 @@ import { chmod, mkdir, open, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
-import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { TypeSafeClient } from "@typesafe-ai/sdk";
 import { chromium } from "playwright-core";
 import { blockOtherHosts } from "./browser/act.ts";
+import { loadConfig, resolveSessionPath, storageStatePath } from "./config.ts";
 import { createRunDir, writeReport } from "./report.ts";
 import { runScenario } from "./run.ts";
-import { Config, resolveScenarioData, Scenario } from "./scenario.ts";
+import { resolveScenarioData, Scenario } from "./scenario.ts";
 import { askUrl, confirmDrafts } from "./scenario-confirm.ts";
 import { readScenarioInput } from "./scenario-input.ts";
 import { draftScenarios, normalizeUrl } from "./scenario-new.ts";
@@ -22,42 +22,21 @@ const USAGE = `Usage:
   qavo run <scenario.json> [--headed] [--config qavo.config.ts] [--storage-state .qavo/role.json] [--out <directory>]
   qavo login <url> [--out <session.json>]
   qavo scenario new [--url <start url>] [--from <file>] [--out <directory>]
+  qavo browser <command>   Drive a browser one command at a time, for coding agents. See qavo browser --help.
 
 Login defaults to ~/.qavo/sessions/<encoded-host>.json.
 The filename uses encodeURIComponent(URL.host), including the port (localhost:3000 becomes localhost%3A3000.json).
 Run loads a session only with --storage-state or config storageState.
 Session paths expand ~/. Other relative paths use the current directory, or the config directory for config storageState.`;
 
-const CONFIG_NAMES = ["qavo.config.ts", "qavo.config.js"];
-
-/** Finds qavo.config.ts in the scenario's folder or a parent folder. */
-function findConfig(from: string): string | undefined {
-  for (let dir = resolve(from); ; dir = dirname(dir)) {
-    const found = CONFIG_NAMES.map((name) => join(dir, name)).find(existsSync);
-    if (found) return found;
-    if (dirname(dir) === dir) return undefined;
-  }
-}
-
-function resolveSessionPath(path: string, baseDir = process.cwd()) {
-  return path.startsWith("~/") ? resolve(homedir(), path.slice(2)) : resolve(baseDir, path);
-}
-
 async function run(scenarioPath: string, options: { headed?: boolean; config?: string; storageState?: string; out?: string }) {
   const upload = parseUploadConfig();
   const scenario = Scenario.parse(JSON.parse(await readFile(scenarioPath, "utf8")));
   resolveScenarioData(scenario);
-  const configPath = options.config ? resolve(options.config) : findConfig(dirname(scenarioPath));
-  const config = Config.parse(configPath ? (await import(pathToFileURL(configPath).href)).default : {});
-  const baseDir = configPath ? dirname(configPath) : process.cwd();
+  const { config, baseDir } = await loadConfig(options.config, dirname(scenarioPath));
   const url = new URL(scenario.url, config.url).href;
   const allowHosts = config.allowHosts ?? [new URL(url).host];
-  const storageState = options.storageState !== undefined
-    ? resolveSessionPath(options.storageState)
-    : config.storageState !== undefined ? resolveSessionPath(config.storageState, baseDir) : undefined;
-  if (storageState && !existsSync(storageState)) {
-    throw new Error(`The storage state ${storageState} does not exist. Run: qavo login <url> --out ${storageState}`);
-  }
+  const storageState = storageStatePath(options.storageState, config, baseDir);
 
   const jev = new TypeSafeClient();
   const { id, dir } = await createRunDir(options.out ? resolve(options.out) : undefined);
@@ -178,30 +157,34 @@ Text with no list is one step.`);
 }
 
 if (existsSync(".env")) process.loadEnvFile(".env");
-const { positionals, values } = parseArgs({
-  allowPositionals: true,
-  options: {
-    headed: { type: "boolean" },
-    config: { type: "string" },
-    "storage-state": { type: "string" },
-    out: { type: "string" },
-    from: { type: "string" },
-    url: { type: "string" },
-  },
-});
-const [command, target] = positionals;
-if (command === "run" && target) {
-  await run(target, { headed: values.headed, config: values.config, storageState: values["storage-state"], out: values.out });
-} else if (command === "login" && target) {
-  await login(target, values.out);
-} else if (command === "scenario" && target === "new") {
-  try {
-    await scenarioNew({ from: values.from, out: values.out, url: values.url });
-  } catch (error) {
-    console.error(`Scenario creation failed: ${error instanceof Error ? error.message : String(error)}`);
+if (process.argv[2] === "browser") {
+  await import("./driver/main.ts");
+} else {
+  const { positionals, values } = parseArgs({
+    allowPositionals: true,
+    options: {
+      headed: { type: "boolean" },
+      config: { type: "string" },
+      "storage-state": { type: "string" },
+      out: { type: "string" },
+      from: { type: "string" },
+      url: { type: "string" },
+    },
+  });
+  const [command, target] = positionals;
+  if (command === "run" && target) {
+    await run(target, { headed: values.headed, config: values.config, storageState: values["storage-state"], out: values.out });
+  } else if (command === "login" && target) {
+    await login(target, values.out);
+  } else if (command === "scenario" && target === "new") {
+    try {
+      await scenarioNew({ from: values.from, out: values.out, url: values.url });
+    } catch (error) {
+      console.error(`Scenario creation failed: ${error instanceof Error ? error.message : String(error)}`);
+      process.exitCode = 2;
+    }
+  } else {
+    console.error(USAGE);
     process.exitCode = 2;
   }
-} else {
-  console.error(USAGE);
-  process.exitCode = 2;
 }

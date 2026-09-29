@@ -291,8 +291,17 @@
       requestAnimationFrame(tick);
     });
 
+  // Names one stored node, so that a caller can report what it acted on. Null when the node is gone.
+  const describe = (index) => {
+    const e = nodes.get(index);
+    if (!e?.isConnected) return null;
+    const role = roleOf(e) ?? e.tagName.toLowerCase();
+    return { index, role, name: nameOf(e) || iconName(e) || role, ...(e.type === "password" && { sensitive: true }) };
+  };
+
   window.__qavo = {
     snapshot,
+    describe,
     fingerprint: () => fingerprintOf(readElements().elements),
     prepare,
     setValue,

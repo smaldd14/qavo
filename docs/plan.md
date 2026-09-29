@@ -72,6 +72,18 @@ Each iteration ends with a commit to `main`, passing `pnpm test`, and one visibl
 - Data keys become `@env:NAME` references after the user supplies environment variable names. The command never resolves or runs them.
 - **Done when:** offline tests cover extraction, draft building, confirmation, secret references, file collisions, and the CLI writes no run artifacts. A scenario written by the command passes against pm-agent.
 
+### 8. Agent CLI (`qavo browser`)
+A coding agent (Claude Code, Cursor) verifies its own change in the running app. The agent is the reasoning. qavo is the hands: a CLI with no model inside. The Jev loop stays as the cheap runner for saved scenarios.
+
+- A driver process owns one browser page between commands. `qavo browser start <url>` spawns it; other commands talk to it over a Unix socket in `~/.qavo/drivers/<name>/` (mode 0700). `--name` keeps parallel checkouts apart. The driver stops after 30 idle minutes.
+- Commands: `start`, `stop`, `status`, `doctor`, `open`, `snapshot`, `click`, `type`, `select`, `press`, `scroll`, `wait-settle`, `screenshot`.
+- Output is one JSON object on stdout. An error has a `code`, a `message`, and a `hint` that says what to run instead. `--help` on each command has examples.
+- Actions take a snapshot index, never a selector. They check the same guards as the Jev loop against the fingerprint of the last snapshot (or `--fp`). `--dry-run` runs the guards and names the target without input.
+- A password field accepts text only from `--env NAME`. Output never echoes typed text.
+- Other people install it with `npm install -g github:smaldd14/qavo`, with no build step. `bin/qavo.js` refuses Node older than 24 with a clear error.
+- The skill `skills/qavo-browser/` (`SKILL.md` and `reference.md`) is how an agent on another machine learns the tool. The repo is also a Claude Code plugin marketplace, so `/plugin install qavo@qavo` installs the skill.
+- **Done when:** an offline test drives `spa.html` through the real binary (start, snapshot after the skeleton, type, click, a stale refusal, screenshot, stop), a clean `npm install -g` from the tarball runs a session, the plugin installs the skill, and an agent verifies one change in pm-agent with only `qavo browser`.
+
 ### Later (only when Stage 0 data shows a need)
 HTML report, Playwright test export for passed runs, the Claude rescuer, a planner from a PR, a login for each role, context providers, and CI `check-pr`.
 

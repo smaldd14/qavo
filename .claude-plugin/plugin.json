@@ -1,0 +1,8 @@
+{
+  "name": "qavo",
+  "description": "Verify web UI changes in the running app with the qavo browser CLI.",
+  "author": { "name": "smaldd14" },
+  "homepage": "https://github.com/smaldd14/qavo",
+  "repository": "https://github.com/smaldd14/qavo",
+  "license": "MIT"
+}

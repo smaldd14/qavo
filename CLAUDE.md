@@ -13,10 +13,20 @@ Read `CONTEXT.md` for the terms. Read `docs/plan.md` for the current iteration.
 - Check the guards (fingerprint, visible, enabled, not covered, allowed host) before each action.
 - `TYPE_TEXT` is only for editable roles (`textbox`, `searchbox`, `spinbutton`, editable `combobox`). Never offer it for a checkbox, radio, or switch.
 
+## Agent CLI (`qavo browser`)
+
+- The driver holds no model. The agent that calls it is the model, so the rules above apply at the command line: actions take a snapshot index and pass the guards. Do not add a command that acts through a selector or `eval`.
+- Each command prints one JSON object. A new error needs a `code` and a `hint` that names the command to run instead.
+- `qavo browser` must not import the Jev runner or load `playwright-core` outside the driver process. Each command should start in about 300 ms.
+- A change to the driver needs a test in `test/driver.test.ts` that runs the real binary.
+- People on other machines use `qavo browser` with no other help than `skills/qavo-browser/`. A change to a command, an option, an output field, or an error code must update `SKILL.md` or `reference.md` in the same commit. `test/docs.test.ts` checks the command and error names.
+- Users install with `npm install -g github:smaldd14/qavo`, not from a checkout. A change to `bin/`, `package.json`, or a file path must pass a clean install: `npm pack`, then `npm install -g --prefix <temp dir> <tarball>`, then a `start`, `snapshot`, and `stop` with that binary.
+
 ## Credentials
 
 - Credentials never reach a model. Password field values come only from `step.data`, and the report writes `***` for them.
 - Never send `storageState` files, cookies, or tokens to a model.
+- `qavo browser` output is read by a model. Never print a typed value, a password value, or an `--env` value.
 
 ## Public repo
 

@@ -9,7 +9,7 @@ export type Action =
   | { operation: "SCROLL_UP" }
   | { operation: "WAIT" };
 
-type RefusalReason = "stale" | "missing" | "hidden" | "disabled" | "not_editable" | "option" | "covered" | "host";
+export type RefusalReason = "stale" | "missing" | "hidden" | "disabled" | "not_editable" | "option" | "covered" | "host";
 
 /** A guard stopped the action before any input reached the page. */
 export class Refused extends Error {
@@ -48,19 +48,7 @@ export async function act(page: Page, action: Action, guard: { fingerprint: stri
     return;
   }
 
-  if ((await currentFingerprint(page)) !== guard.fingerprint) {
-    throw new Refused("stale", "The page changed after the decision.");
-  }
-  const optionValue = action.operation === "SELECT" ? action.value : null;
-  const prepared = await callPage<Prepared>(
-    page,
-    `prepare(${action.index}, ${JSON.stringify(action.operation)}, ${JSON.stringify(optionValue)})`,
-  );
-  if ("refused" in prepared) throw new Refused(prepared.refused, `The target is ${prepared.refused.replace("_", " ")}.`);
-  if (prepared.href && !isAllowedUrl(prepared.href, guard.allowHosts)) {
-    throw new Refused("host", `The link goes to ${new URL(prepared.href).host}, which is not in allowHosts.`);
-  }
-
+  const prepared = await checkGuards(page, action, guard);
   if (action.operation === "SELECT" || (action.operation === "TYPE_TEXT" && prepared.setValue)) {
     const value = action.operation === "SELECT" ? action.value : action.text;
     await callPage(page, `setValue(${action.index}, ${JSON.stringify(value)})`);
@@ -74,6 +62,25 @@ export async function act(page: Page, action: Action, guard: { fingerprint: stri
   }
   // A click can start a navigation, which destroys the page context. The next snapshot waits for the new page.
   await callPage(page, `settle(${action.index}, ${action.operation === "TYPE_TEXT"})`).catch(() => undefined);
+}
+
+type TargetAction = Extract<Action, { index: number }>;
+
+/** Runs the guards for one targeted action without input. Returns the point to click, or throws Refused. */
+export async function checkGuards(page: Page, action: TargetAction, guard: { fingerprint: string; allowHosts: string[] }) {
+  if ((await currentFingerprint(page)) !== guard.fingerprint) {
+    throw new Refused("stale", "The page changed after the decision.");
+  }
+  const optionValue = action.operation === "SELECT" ? action.value : null;
+  const prepared = await callPage<Prepared>(
+    page,
+    `prepare(${action.index}, ${JSON.stringify(action.operation)}, ${JSON.stringify(optionValue)})`,
+  );
+  if ("refused" in prepared) throw new Refused(prepared.refused, `The target is ${prepared.refused.replace("_", " ")}.`);
+  if (prepared.href && !isAllowedUrl(prepared.href, guard.allowHosts)) {
+    throw new Refused("host", `The link goes to ${new URL(prepared.href).host}, which is not in allowHosts.`);
+  }
+  return prepared;
 }
 
 /** Aborts main-frame navigations to hosts that are not in allowHosts, for example a form post or a script redirect. */

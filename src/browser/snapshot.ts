@@ -88,3 +88,17 @@ export async function snapshot(page: Page): Promise<Snapshot> {
 export async function currentFingerprint(page: Page): Promise<string> {
   return page.evaluate<string>(`${PAGE_SCRIPT}\nwindow.__qavo.fingerprint()`);
 }
+
+const CHANGE_LINES = 8;
+const CHANGE_LINE_CHARS = 120;
+
+/** The page text lines that are only in `before` (removed) and only in `after` (added). */
+export function textChanges(before: string, after: string) {
+  const beforeLines = new Set(before.split("\n"));
+  const afterLines = new Set(after.split("\n"));
+  const pick = (lines: Set<string>, other: Set<string>) =>
+    [...lines].filter((line) => !other.has(line)).slice(0, CHANGE_LINES).map((line) => line.slice(0, CHANGE_LINE_CHARS));
+  const removed = pick(beforeLines, afterLines);
+  const added = pick(afterLines, beforeLines);
+  return removed.length || added.length ? { removed, added } : undefined;
+}

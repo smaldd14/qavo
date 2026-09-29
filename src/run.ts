@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { noul } from "@typesafe-ai/sdk";
 import type { Page } from "playwright-core";
 import { act, isAllowedUrl, Refused, type Action } from "./browser/act.ts";
-import { settledSnapshot, trackRequests, type Snapshot } from "./browser/snapshot.ts";
+import { settledSnapshot, textChanges, trackRequests, type Snapshot } from "./browser/snapshot.ts";
 import { parseNoul, type Jev } from "./jev/answers.ts";
 import { decide, describeElement, type Decision, type HistoryEntry } from "./jev/decide.ts";
 import { EXPECT_RULES } from "./jev/prompts.ts";
@@ -209,20 +209,6 @@ async function runStep(options: RunOptions, step: Step, report: RunReport, secre
       pageChanged: null,
     });
   }
-}
-
-const CHANGE_LINES = 8;
-const CHANGE_LINE_CHARS = 120;
-
-/** The page text lines that are only in `before` (removed) and only in `after` (added). */
-function textChanges(before: string, after: string) {
-  const beforeLines = new Set(before.split("\n"));
-  const afterLines = new Set(after.split("\n"));
-  const pick = (lines: Set<string>, other: Set<string>) =>
-    [...lines].filter((line) => !other.has(line)).slice(0, CHANGE_LINES).map((line) => line.slice(0, CHANGE_LINE_CHARS));
-  const removed = pick(beforeLines, afterLines);
-  const added = pick(afterLines, beforeLines);
-  return removed.length || added.length ? { removed, added } : undefined;
 }
 
 function turnFor(n: number, state: Snapshot, decision: Decision): Turn {
