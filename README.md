@@ -38,9 +38,21 @@ The skill tells an agent when to use `qavo browser`, how to run the loop, and ho
   ```
 
   From a terminal, use `claude plugin marketplace add smaldd14/qavo` and `claude plugin install qavo@qavo`.
-- **Other agents.** Copy [`skills/qavo-browser/SKILL.md`](skills/qavo-browser/SKILL.md) into the agent's instructions, for example into `AGENTS.md` in your project. Tell the agent that the full reference is at <https://github.com/smaldd14/qavo/blob/main/skills/qavo-browser/reference.md>.
+- **Other agents.** Copy [`skills/qavo-browser/SKILL.md`](skills/qavo-browser/SKILL.md) (and [`skills/create-verification-skill/`](skills/create-verification-skill/SKILL.md) if you want it) into the agent's instructions, for example into `AGENTS.md` in your project. Tell the agent that the full reference is at <https://github.com/smaldd14/qavo/blob/main/skills/qavo-browser/reference.md>.
 
 Then ask the agent to verify a change, for example: "Check in the browser that the Save button on /settings keeps the new email."
+
+### Create a verification skill for your app
+
+`qavo-browser` knows the browser, not your app. The plugin also has `create-verification-skill`, which writes a `verify-<app>` skill into your repo. Run it once in your app's repo, for example with `/qavo:create-verification-skill` in Claude Code. The agent:
+
+1. Finds how to install, seed, start, and log in to your app, runs it, and records the commands that worked.
+2. Imports your team's manual test steps from Confluence, SharePoint, Google Docs, or exported files. It keeps the steps, and it leaves out credentials and customer data.
+3. Builds a feature map: one file for each feature, with how to reach it, the `qavo browser` steps, what to check, the code paths, and the gotchas.
+4. Drives each feature to prove the steps, and marks it verified with a date and a commit.
+5. Writes `verify-<app>/SKILL.md`, which later agents use to find the features that a diff touches, verify them, and update the map in the same change.
+
+The team's documents stay where they are. The skill keeps distilled steps in the repo, with a link and a version for each source, so that an agent with no access to Confluence or SharePoint can still verify, and a reviewer sees step changes next to code changes.
 
 ### A session by hand
 
@@ -70,6 +82,15 @@ qavo browser click 3
 {"ok":true,"target":{"index":3,"role":"button","name":"Save and next"},"pageChanged":true,
  "changes":{"removed":["2 left","112 Automotive Blvd"],"added":["1 left","21 Aberdeen Ave"]},
  "url":"http://localhost:5173/queue","title":"Queue","fingerprint":"669364f5","elements":3}
+```
+
+Each action result also has a `network` summary (the count of app requests and the failed ones) and a `console` summary (errors and warnings). For the details:
+
+```sh
+qavo browser network --last-action    # the requests that the click made, with status and time
+qavo browser network 12               # one request with its request and response bodies
+qavo browser console --level error    # console errors and uncaught exceptions
+qavo browser eval "localStorage.getItem('theme')"   # read state that the snapshot does not show
 ```
 
 Keep evidence, then close the browser:
@@ -102,10 +123,12 @@ For a password field, the agent uses `qavo browser type <index> --env NAME`. The
 ### Rules that qavo enforces
 
 - Each command prints one JSON object. A failure is `{ "ok": false, "error": { "code", "message", "hint" } }` with exit code 1. The `hint` says what to run next.
-- Actions take an element index from a snapshot, never a selector.
+- Actions take an element index from a snapshot, never a selector or a screen position.
+- `eval` reads page state with a JavaScript expression. It is not an action: it passes no guards, and if it changes the page, the result says so and the next action needs a new snapshot.
+- `network` never shows request or response headers. Bodies can hold application data, so keep the output private.
 - Before each action, the driver checks that the page did not change since the last snapshot (the fingerprint), and that the target is visible, enabled, and not covered. `--dry-run` runs these checks with no input.
 - The page can visit only the hosts in `allowHosts`. By default, this is the host of the start URL. Add more with `--allow-host`.
-- A password field accepts text only from `--env NAME`. No output shows a typed value.
+- A password field accepts text only from `--env NAME`. No output shows a typed value, and each `--env` value shows as `***` in `network`, `console`, and `eval` output.
 
 ### Several agents at once
 

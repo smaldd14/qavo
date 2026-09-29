@@ -1,8 +1,9 @@
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { parseArgs, type ParseArgsOptionsConfig } from "node:util";
 import { loadConfig, storageStatePath } from "../config.ts";
 import { call, doctor, OPTIONS_ENV, START_ERROR, startDriver, stopDriver } from "./client.ts";
-import { DriverError, DriverOptions, driverPaths, type DriverPaths, type Request } from "./protocol.ts";
+import { DriverError, DriverOptions, driverPaths, type DriverPaths, type RequestInput } from "./protocol.ts";
 
 type Args = { positionals: string[]; values: Record<string, string | boolean | string[] | undefined>; paths: DriverPaths };
 
@@ -23,7 +24,7 @@ A refused action does nothing and returns { ok: false, error: { code: "refused",
 --dry-run runs the guards and names the target, with no input.
 The result has the new url, title, fingerprint, pageChanged, and the page text lines that changed.`;
 
-const ask = (paths: DriverPaths, request: Request) => call(paths, request).then((reply) => {
+const ask = (paths: DriverPaths, request: RequestInput) => call(paths, request).then((reply) => {
   if (!reply.ok) throw new DriverError(reply.error.code, reply.error.message, reply.error.hint, reply.error);
   const { ok: _ok, ...rest } = reply;
   return rest;
@@ -36,6 +37,24 @@ function parseIndex(value: string | undefined) {
   }
   return index;
 }
+
+function parseCount(value: string | boolean | string[] | undefined, flag: string, min: number) {
+  if (value === undefined) return undefined;
+  const count = Number(value);
+  if (!Number.isInteger(count) || count < min) throw new DriverError("usage", `${flag} must be a whole number from ${min}.`, `Example: \`${flag} ${Math.max(min, 5)}\`.`);
+  return count;
+}
+
+const SINCE_OPTIONS: ParseArgsOptionsConfig = { "last-action": { type: "boolean" }, since: { type: "string" }, limit: { type: "string" } };
+const SINCE_DETAILS = `--last-action lists only what happened since the start of the last action (click, type, select, press, scroll, open).
+--since <cursor> lists only what happened after a cursor. Each list returns its "cursor"; pass it next time to see only new entries.
+--limit <n> keeps the last n entries (default 50). The driver keeps the last 500 requests and 500 messages.`;
+
+const since = (args: Args) => ({
+  lastAction: args.values["last-action"] === true,
+  ...(args.values.since !== undefined && { since: parseCount(args.values.since, "--since", 0) }),
+  ...(args.values.limit !== undefined && { limit: parseCount(args.values.limit, "--limit", 1) }),
+});
 
 const target = (args: Args) => ({
   index: parseIndex(args.positionals[0]),
@@ -204,6 +223,78 @@ variable (from the shell or .env), so that the secret never passes through your 
     run: ({ positionals, values, paths }) =>
       ask(paths, { command: "screenshot", ...(positionals[0] && { path: resolve(positionals[0]) }), fullPage: values["full-page"] === true }),
   },
+  network: {
+    usage: "network [id] [--failed] [--filter <text>] [--all] [--last-action] [--since <cursor>] [--limit <n>]",
+    summary: "List the page's requests with method, URL, status, and time, or show one request with its bodies.",
+    details: `Each action result already has a short "network" summary: the count of app requests and the failed ones.
+Use this command for the full list. It shows document, fetch, XHR, WebSocket, and EventSource requests,
+and any request that failed. --all adds scripts, styles, images, and fonts.
+A request failed when it has a "failure" (for example net::ERR_CONNECTION_REFUSED) or a status of 400 or more.
+--failed lists only failed requests. --filter <text> keeps URLs that contain the text.
+With [id], shows that request with its request body and text response body (4000 characters at most).
+Headers are never shown, because they can hold tokens and cookies. Secrets typed with --env show as ***.
+${SINCE_DETAILS}`,
+    examples: ["qavo browser network --last-action", "qavo browser network --failed", "qavo browser network --filter /api/orders", "qavo browser network 42"],
+    options: { failed: { type: "boolean" }, filter: { type: "string" }, all: { type: "boolean" }, ...SINCE_OPTIONS },
+    positionals: [0, 1],
+    run: (args) => ask(args.paths, {
+      command: "network",
+      ...(args.positionals[0] !== undefined && { id: parseIndex(args.positionals[0]) }),
+      failed: args.values.failed === true,
+      all: args.values.all === true,
+      ...(typeof args.values.filter === "string" && { contains: args.values.filter }),
+      ...since(args),
+    }),
+  },
+  console: {
+    usage: "console [--level error|warning|all] [--last-action] [--since <cursor>] [--limit <n>]",
+    summary: "List the page's console messages and uncaught errors.",
+    details: `Each action result already has a short "console" summary: the count of errors and warnings, and the first errors.
+Each message has a level: log, info, debug, warning, error, or pageerror (an uncaught exception, with the line it came from).
+--level error lists error and pageerror. --level warning adds warning. The default is all.
+${SINCE_DETAILS}`,
+    examples: ["qavo browser console --level error", "qavo browser console --last-action"],
+    options: { level: { type: "string" }, ...SINCE_OPTIONS },
+    positionals: [0, 0],
+    run(args) {
+      const level = args.values.level ?? "all";
+      if (level !== "error" && level !== "warning" && level !== "all") {
+        throw new DriverError("usage", `"${String(level)}" is not a level.`, "Use --level error, --level warning, or --level all.");
+      }
+      return ask(args.paths, { command: "console", level, ...since(args) });
+    },
+  },
+  eval: {
+    usage: "eval <expression> | eval --file <path>",
+    summary: "Read page state with a JavaScript expression. The result is JSON.",
+    details: `Runs one expression in the page and returns its value as JSON. A promise is awaited (10 s at most).
+An element becomes a short tag such as "<h1>" or "<input#email>". Output over 20000 characters is cut.
+Use it to read what the snapshot does not show: localStorage, a data attribute, a computed style, or app state on window.
+eval is for reading, not for acting. It passes no guards and does not update the fingerprint that actions check.
+If the expression changed the page, the result has "pageChanged": true and a warning, and the next action needs a new snapshot.
+Do not use eval to do the step that you verify: a check that clicks through eval proves nothing about the UI.
+For statements, wrap them: (() => { ...; return value; })(). --file reads the expression from a file.
+Secrets typed with --env show as ***.`,
+    examples: [
+      "qavo browser eval \"document.title\"",
+      "qavo browser eval \"localStorage.getItem('theme')\"",
+      "qavo browser eval \"getComputedStyle(document.querySelector('main')).display\"",
+      "qavo browser eval --file /tmp/read-cart.js",
+    ],
+    options: { file: { type: "string" } },
+    positionals: [0, 1],
+    async run(args) {
+      const file = args.values.file as string | undefined;
+      const inline = args.positionals[0];
+      if ((file === undefined) === (inline === undefined)) {
+        throw new DriverError("usage", "Pass either <expression> or --file <path>, not both.", "Example: `qavo browser eval \"document.title\"`.");
+      }
+      const expression = file === undefined ? inline! : await readFile(resolve(file), "utf8").catch(() => {
+        throw new DriverError("usage", `Could not read ${file}.`, "Pass the path of a file that holds one JavaScript expression.");
+      });
+      return ask(args.paths, { command: "eval", expression });
+    },
+  },
 };
 
 const OVERVIEW = `qavo browser: drive a real browser from a coding agent, one command at a time. No model runs inside.
@@ -214,7 +305,8 @@ Start a driver, read the page, act by element index, and keep evidence:
   qavo browser start http://localhost:5173
   qavo browser snapshot                 # elements with indices, text, fingerprint
   qavo browser type 4 "Ada Lovelace"
-  qavo browser click 7                  # result shows what changed on the page
+  qavo browser click 7                  # result shows what changed on the page, the network, and the console
+  qavo browser network --last-action    # the requests that the click made, with status
   qavo browser screenshot /tmp/proof.png
   qavo browser stop
 

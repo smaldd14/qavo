@@ -5,9 +5,14 @@ import { chromium, type Page } from "playwright-core";
 import { z } from "zod";
 import { act, blockOtherHosts, checkGuards, isAllowedUrl, Refused, type Action, type RefusalReason } from "../browser/act.ts";
 import { PAGE_SCRIPT, settledSnapshot, snapshot, textChanges, trackRequests, type Snapshot } from "../browser/snapshot.ts";
+import { observe, type Observer } from "./observe.ts";
 import { DriverError, Request, type DriverOptions, type DriverPaths } from "./protocol.ts";
 
 type Target = { index: number; role: string; name: string; sensitive?: true };
+
+const EVAL_TIMEOUT_MS = 10_000;
+const EVAL_CHARS = 20_000;
+const EVAL_HINT = "Pass one expression, for example `document.title`. For statements, wrap them: `(() => { const rows = document.querySelectorAll('tr'); return rows.length; })()`.";
 
 const RESNAPSHOT = "Run `qavo browser snapshot`, then use the new indices and fingerprint.";
 const REFUSAL_HINTS: Record<RefusalReason, string> = {
@@ -25,9 +30,11 @@ const REFUSAL_HINTS: Record<RefusalReason, string> = {
 export async function serveDriver(paths: DriverPaths, options: DriverOptions) {
   const browser = await chromium.launch({ headless: !options.headed });
   let page: Page;
+  let observer: Observer;
   try {
     const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, storageState: options.storageState });
     page = await context.newPage();
+    observer = observe(page);
     trackRequests(page);
     await blockOtherHosts(page, options.allowHosts);
     await page.goto(options.url);
@@ -38,6 +45,7 @@ export async function serveDriver(paths: DriverPaths, options: DriverOptions) {
 
   const startedAt = new Date().toISOString();
   let last: Snapshot | undefined;
+  let lastActionCursor = 0;
   let queue = Promise.resolve();
   let idle: NodeJS.Timeout | undefined;
   let stopping = false;
@@ -74,12 +82,13 @@ export async function serveDriver(paths: DriverPaths, options: DriverOptions) {
           throw new DriverError("host_not_allowed", `${new URL(url).host} is not in allowHosts (${options.allowHosts.join(", ")}).`,
             "Restart the driver with `--allow-host <host>` if the host is part of the app.");
         }
+        const cursor = lastActionCursor = observer.cursor();
         try {
           await page.goto(url);
         } catch (error) {
           throw new DriverError("navigation_failed", `Could not open ${url}: ${messageOf(error)}`, "Check that the app is running. `qavo browser doctor` shows the driver state.");
         }
-        return summary(last = await settledSnapshot(page));
+        return { ...summary(last = await settledSnapshot(page)), ...observer.activity(cursor) };
       }
       case "snapshot":
         return (last = await settledSnapshot(page));
@@ -96,6 +105,7 @@ export async function serveDriver(paths: DriverPaths, options: DriverOptions) {
           throw new DriverError("secret_literal", `Element ${request.index} is a password field. It accepts text only from an environment variable.`,
             `Put the value in an environment variable (or .env), then run \`qavo browser type ${request.index} --env NAME\`.`);
         }
+        if (request.env !== undefined) observer.addSecret(request.text);
         const result = await targeted(request, { operation: "TYPE_TEXT", index: request.index, text: request.text });
         return { ...result, typed: { characters: request.text.length, ...(request.env ? { env: request.env } : {}) } };
       }
@@ -103,18 +113,20 @@ export async function serveDriver(paths: DriverPaths, options: DriverOptions) {
         return targeted(request, { operation: "SELECT", index: request.index, value: request.value });
       case "press": {
         const before = await snapshot(page);
+        const cursor = observer.cursor();
         try {
           await page.keyboard.press(request.key);
         } catch (error) {
           throw new DriverError("bad_key", `Could not press "${request.key}": ${messageOf(error)}`,
             "Use a Playwright key name, for example Enter, Escape, Tab, ArrowDown, Meta+KeyK, or ControlOrMeta+Comma.");
         }
-        return afterAction(before, { key: request.key });
+        return afterAction(before, cursor, { key: request.key });
       }
       case "scroll": {
         const before = await snapshot(page);
+        const cursor = observer.cursor();
         await act(page, { operation: request.direction === "down" ? "SCROLL_DOWN" : "SCROLL_UP" }, { fingerprint: "", allowHosts: options.allowHosts });
-        return afterAction(before, { direction: request.direction });
+        return afterAction(before, cursor, { direction: request.direction });
       }
       case "screenshot": {
         const path = request.path ?? join(paths.screenshots, `${new Date().toISOString().replaceAll(":", "-")}.png`);
@@ -123,7 +135,49 @@ export async function serveDriver(paths: DriverPaths, options: DriverOptions) {
         await page.screenshot({ path, fullPage: request.fullPage });
         return { path, url: page.url() };
       }
+      case "network": {
+        if (request.id !== undefined) {
+          const detail = await observer.requestDetail(request.id);
+          if (!detail) {
+            throw new DriverError("not_found", `No recorded request has id ${request.id}.`,
+              "Run `qavo browser network` to list the recorded requests and their ids. The driver keeps the last 500.");
+          }
+          return { request: detail };
+        }
+        return observer.listRequests({ since: sinceOf(request), failed: request.failed, all: request.all, contains: request.contains, limit: request.limit });
+      }
+      case "console":
+        return observer.listMessages({ since: sinceOf(request), level: request.level, limit: request.limit });
+      case "eval":
+        return evaluate(request.expression);
     }
+  };
+
+  const sinceOf = (request: { since?: number; lastAction: boolean }) => (request.lastAction ? lastActionCursor : request.since ?? 0);
+
+  /** Reads page state with the agent's own expression. It does not update the fingerprint that actions check. */
+  const evaluate = async (expression: string) => {
+    const before = await snapshot(page);
+    let json: string | null;
+    try {
+      json = await Promise.race([
+        page.evaluate<string | null>(evalScript(expression)),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new DriverError("eval_timeout", `The expression did not finish in ${EVAL_TIMEOUT_MS / 1000} s.`,
+          "Return a value without waiting on a promise that never resolves. Use `qavo browser wait-settle` to wait for the page.")), EVAL_TIMEOUT_MS)),
+      ]);
+    } catch (error) {
+      if (error instanceof DriverError) throw error;
+      throw new DriverError("eval_failed", `The expression failed: ${messageOf(error)}`, EVAL_HINT);
+    }
+    const after = await snapshot(page);
+    const pageChanged = after.fingerprint !== before.fingerprint || after.text !== before.text;
+    const text = json === null ? "null" : observer.redact(json);
+    const value = text.length > EVAL_CHARS ? { valueText: text.slice(0, EVAL_CHARS), truncated: true } : { value: JSON.parse(text) as unknown };
+    return {
+      ...value,
+      pageChanged,
+      ...(pageChanged && { warning: "The expression changed the page. eval is for reading, not for acting. Run `qavo browser snapshot` before the next action." }),
+    };
   };
 
   /** Runs one indexed action after its guards. A dry run stops after the guards. */
@@ -139,18 +193,24 @@ export async function serveDriver(paths: DriverPaths, options: DriverOptions) {
         return { dryRun: true, target, wouldAct: action.operation };
       }
       const before = await snapshot(page);
+      const cursor = observer.cursor();
       await act(page, action, guard);
-      return afterAction(before, { target });
+      return afterAction(before, cursor, { target });
     } catch (error) {
       if (!(error instanceof Refused)) throw error;
       throw new DriverError("refused", error.message, REFUSAL_HINTS[error.reason], { reason: error.reason, target });
     }
   };
 
-  const afterAction = async (before: Snapshot, detail: object) => {
+  /** Settles, then reports what the action changed on the page, on the network, and in the console. */
+  const afterAction = async (before: Snapshot, cursor: number, detail: object) => {
+    lastActionCursor = cursor;
     last = await settledSnapshot(page);
     const changes = textChanges(before.text, last.text);
-    return { ...detail, ...summary(last), pageChanged: last.fingerprint !== before.fingerprint || changes !== undefined, ...(changes && { changes }) };
+    return {
+      ...detail, ...summary(last), pageChanged: last.fingerprint !== before.fingerprint || changes !== undefined, ...(changes && { changes }),
+      ...observer.activity(cursor),
+    };
   };
 
   const server = createServer(async (incoming: IncomingMessage, response: ServerResponse) => {
@@ -189,6 +249,27 @@ export async function serveDriver(paths: DriverPaths, options: DriverOptions) {
 const summary = (state: Snapshot) => ({ url: state.url, title: state.title, fingerprint: state.fingerprint, elements: state.elements.length });
 
 const describe = (page: Page, index: number) => page.evaluate<Target | null>(`${PAGE_SCRIPT}\nwindow.__qavo.describe(${index})`);
+
+/** Wraps an agent's expression so that the page returns JSON. Elements become a short tag, and cycles are cut. */
+const evalScript = (expression: string) => `(async () => {
+  const value = await (${expression}
+  );
+  const seen = new WeakSet();
+  const json = JSON.stringify(value, (key, v) => {
+    if (typeof v === "bigint") return v.toString();
+    if (typeof v === "function") return "[function]";
+    if (v instanceof Element) return "<" + v.tagName.toLowerCase() + (v.id ? "#" + v.id : "") + ">";
+    if (v instanceof Node) return "[" + v.nodeName + "]";
+    if (v instanceof Map) return Object.fromEntries(v);
+    if (v instanceof Set) return [...v];
+    if (v && typeof v === "object") {
+      if (seen.has(v)) return "[circular]";
+      seen.add(v);
+    }
+    return v;
+  });
+  return json === undefined ? null : json;
+})()`;
 
 const messageOf = (error: unknown) => (error instanceof Error ? error.message.split("\n")[0]! : String(error));
 

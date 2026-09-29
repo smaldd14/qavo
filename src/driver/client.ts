@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import { mkdir, readFile, rm } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { fileURLToPath } from "node:url";
-import { DriverError, type DriverOptions, type DriverPaths, type Request } from "./protocol.ts";
+import { DriverError, type DriverOptions, type DriverPaths, type RequestInput } from "./protocol.ts";
 
 type Reply = { ok: true; [key: string]: unknown } | { ok: false; error: { code: string; message: string; hint?: string } };
 
@@ -19,7 +19,7 @@ const notRunning = (paths: DriverPaths) =>
   new DriverError("not_running", `No driver named "${paths.name}" is running.`, `Run \`qavo browser start <url>${paths.name === "default" ? "" : ` --name ${paths.name}`}\` first.`);
 
 /** Sends one command to the driver. Throws not_running when nothing answers on the socket. */
-export function call(paths: DriverPaths, command: Request | Record<string, unknown>, timeoutMs = 120_000): Promise<Reply> {
+export function call(paths: DriverPaths, command: RequestInput | Record<string, unknown>, timeoutMs = 120_000): Promise<Reply> {
   return new Promise((resolve, reject) => {
     if (!existsSync(paths.socket)) return reject(notRunning(paths));
     const req = httpRequest({ socketPath: paths.socket, method: "POST", path: "/", timeout: timeoutMs }, (response) => {

@@ -44,6 +44,9 @@ Each command prints exactly one JSON object on stdout.
 | `scroll <up\|down>` | Scrolls by most of one screen. |
 | `wait-settle` | Waits until the page settles. Returns a short summary. |
 | `screenshot [path]` | Saves a PNG. `--full-page` captures the full page. Without `path`, saves in the driver's `screenshots/` directory. |
+| `network [id]` | Lists the page's requests with status and time, or shows one request with its bodies. See [Network](#network). |
+| `console` | Lists console messages and uncaught page errors. See [Console](#console). |
+| `eval <expression>` | Reads page state with a JavaScript expression and returns JSON. It is not an action. See [Eval](#eval). |
 
 ### `start` options
 
@@ -121,7 +124,9 @@ An action waits until the page settles and returns a short summary, not the full
   "fingerprint": "669364f5",
   "elements": 3,
   "pageChanged": true,
-  "changes": { "removed": ["2 left", "112 Automotive Blvd"], "added": ["1 left", "21 Aberdeen Ave"] }
+  "changes": { "removed": ["2 left", "112 Automotive Blvd"], "added": ["1 left", "21 Aberdeen Ave"] },
+  "network": { "requests": 1, "failed": [] },
+  "console": { "errors": 0, "warnings": 0, "messages": [] }
 }
 ```
 
@@ -129,7 +134,11 @@ An action waits until the page settles and returns a short summary, not the full
 - `changes` lists up to 8 text lines that the action removed and added. It is absent when no text changed. This is the fastest way to see what an action did.
 - `elements` is a count. To see new elements, run `snapshot`.
 - `fingerprint` becomes the fingerprint for the next action. You can do several actions in a row without a snapshot, as long as you act on elements that you already know.
+- `network` counts the app requests that the action caused (document, fetch, XHR, WebSocket, EventSource) and lists up to 5 that failed. A request failed when it has a `failure` or a status of 400 or more.
+- `console` counts the errors and warnings that the action caused and shows up to 3 errors. An uncaught exception has the level `pageerror`.
 - `type` adds `typed: { characters, env? }`. It never shows the typed text.
+
+`open` returns the same `network` and `console` summary. `click`, `type`, `select`, `press`, `scroll`, and `open` each start a new "last action" for `network --last-action` and `console --last-action`.
 
 ## Guards
 
@@ -171,13 +180,92 @@ The driver also blocks each main-frame navigation to a host outside `allowHosts`
 | `usage` | Wrong arguments. | Run `qavo browser <command> --help`. |
 | `unknown_command` | The command does not exist. | Run `qavo browser --help`. |
 | `bad_request` | The driver got a request that it cannot parse. | Run `qavo browser --help`. Report it as a bug if it continues. |
+| `not_found` | `network <id>` with an id that the driver does not have. | Run `network` to list the ids. The driver keeps the last 500. |
+| `eval_failed` | The expression threw an error or is not one expression. | Read the message. Wrap statements in `(() => { ...; return value; })()`. |
+| `eval_timeout` | The expression did not finish in 10 seconds. | Do not wait on a promise that never resolves. Use `wait-settle` to wait for the page. |
 | `node_version` | Node is older than 24. | Install Node 24 or later. |
 | `driver_error`, `error` | An unexpected failure. | Run `doctor`, and read `driver.log`. |
+
+## Network
+
+The driver records each request that the page makes, from the start of the driver. It keeps the last 500.
+
+```sh
+qavo browser network --last-action      # the requests that the last action made
+qavo browser network --failed           # all failed requests
+qavo browser network --filter /api/orders
+qavo browser network 42                 # one request with its bodies
+```
+
+```json
+{ "ok": true, "requests": [
+  { "id": 42, "method": "POST", "url": "http://localhost:5173/api/orders", "type": "fetch", "status": 500, "durationMs": 55 }
+], "cursor": 44 }
+```
+
+| Field | Meaning |
+| --- | --- |
+| `id` | The number to pass to `network <id>`. Requests and console messages share one sequence. |
+| `type` | The resource type: `document`, `fetch`, `xhr`, `websocket`, `eventsource`, `script`, `stylesheet`, `image`, `font`, and others. |
+| `status` | The HTTP status. |
+| `failure` | Why the request did not complete, for example `net::ERR_CONNECTION_REFUSED` or `net::ERR_ABORTED`. |
+| `durationMs` | The time from the request to its end. A request with `pending: true` has not ended. |
+| `cursor` | The last id so far. Pass it as `--since <cursor>` to list only newer entries. |
+| `omitted` | The count of matches before the last `--limit` entries. |
+
+Options: `--failed` lists only failed requests. `--filter <text>` keeps URLs that contain the text. `--all` adds scripts, styles, images, and fonts, which are left out unless they fail. `--last-action`, `--since <cursor>`, and `--limit <n>` (default 50) select the range.
+
+`network <id>` adds `requestContentType`, `requestBody`, `responseContentType`, and `responseBody` for text types (JSON, text, XML, form data). Each body is cut at 4000 characters, with `requestBodyTruncated` or `responseBodyTruncated`. A response body can be lost after the page navigates. Headers are never shown, because they can hold tokens and cookies.
+
+## Console
+
+The driver records console messages and uncaught page errors. It keeps the last 500.
+
+```sh
+qavo browser console --level error
+qavo browser console --last-action
+```
+
+```json
+{ "ok": true, "messages": [
+  { "id": 43, "level": "error", "text": "Save failed: Database is down", "location": "http://localhost:5173/src/orders.tsx:27" },
+  { "id": 44, "level": "pageerror", "text": "TypeError: Cannot read properties of undefined (reading 'total')", "location": "at OrderTotal (http://localhost:5173/src/total.tsx:12:9)" }
+], "cursor": 44 }
+```
+
+The levels are `log`, `info`, `debug`, `warning`, `error`, and `pageerror`. `--level error` lists `error` and `pageerror`. `--level warning` adds `warning`. The default is `all`. Each text is cut at 500 characters. The browser's own "Failed to load resource" errors are left out, because `network` shows those requests.
+
+## Eval
+
+`eval` runs one JavaScript expression in the page and returns its value as JSON. Use it to read what a snapshot does not show:
+
+```sh
+qavo browser eval "localStorage.getItem('theme')"
+qavo browser eval "getComputedStyle(document.querySelector('main')).display"
+qavo browser eval "document.querySelectorAll('[data-testid=order-row]').length"
+qavo browser eval --file /tmp/read-cart.js
+```
+
+```json
+{ "ok": true, "value": "dark", "pageChanged": false }
+```
+
+- A promise is awaited for 10 seconds at most.
+- An element becomes a short tag, such as `"<h1>"` or `"<input#email>"`. A cycle becomes `"[circular]"`. A `Map` becomes an object, and a `Set` becomes an array.
+- A value over 20000 characters comes back as `valueText` with `truncated: true`.
+- For statements, wrap them in a function: `(() => { const rows = document.querySelectorAll('tr'); return rows.length; })()`.
+
+`eval` is for reading, not for acting:
+
+- It passes no guards, and it does not update the fingerprint that actions check.
+- If the expression changed the page, the result has `pageChanged: true` and a `warning`. The next action is then refused as `stale` until you take a snapshot.
+- Do not use `eval` to do the step that you verify. A check that submits a form through `eval` proves nothing about the UI that a user sees.
 
 ## Credentials
 
 - A password field accepts text only from `--env NAME`. The value comes from the shell environment or from `.env` in the current directory. The value never passes through the agent's context.
-- No output shows a typed value, a password value, or an `--env` value.
+- No output shows a typed value, a password value, or an `--env` value. Each value typed with `--env` is replaced by `***` in `network`, `console`, and `eval` output, also in its URL-encoded form.
+- `network` never shows headers. Request and response bodies can still hold customer data or tokens that the app puts in a body. Treat the output as private.
 - `qavo login <url>` opens a browser for a human to log in, then saves the session. It needs a human at the terminal, so an agent cannot run it. The session file has cookies and tokens. Do not read it, print it, or commit it.
 
 ## Limits
@@ -188,4 +276,5 @@ These are not supported now:
 - Content inside iframes.
 - A second tab or popup window. A link that opens a new tab does not move the driver.
 - Browser dialogs (`alert`, `confirm`). Playwright dismisses them.
-- Acting through a CSS selector or JavaScript. This is on purpose: each action goes through a snapshot index and the guards.
+- Clicking at a screen position (`click-xy`), and acting through a CSS selector. This is on purpose: each action goes through a snapshot index and the guards. `eval` can read the page, but it is not an action.
+- Performance traces and metrics.

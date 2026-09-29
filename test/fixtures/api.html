@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Orders</title></head>
+<body>
+  <h1>Orders</h1>
+  <p id="status">Ready</p>
+  <label for="note">Note</label><input id="note" value="">
+  <label for="pw">Password</label><input id="pw" type="password">
+  <button type="button" id="save">Save</button>
+  <button type="button" id="break">Save to broken API</button>
+  <button type="button" id="crash">Crash</button>
+  <button type="button" id="login">Log in</button>
+  <script>
+    // An app that talks to an API: one call that works, one that returns 500, and one uncaught error.
+    console.log("Orders page ready");
+    const status = document.getElementById("status");
+    const post = (url, body) => fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer header-token" },
+      body: JSON.stringify(body),
+    });
+    document.getElementById("save").onclick = async () => {
+      const response = await post("/api/echo", { note: document.getElementById("note").value });
+      status.textContent = response.ok ? "Saved" : "Error";
+    };
+    document.getElementById("break").onclick = async () => {
+      const body = await (await post("/api/fail", {})).json();
+      console.error(`Save failed: ${body.error}`);
+      status.textContent = "Could not save";
+    };
+    document.getElementById("crash").onclick = () => {
+      throw new Error("Cannot read the order total");
+    };
+    document.getElementById("login").onclick = async () => {
+      await post("/api/echo", { password: document.getElementById("pw").value });
+      status.textContent = "Logged in";
+    };
+  </script>
+</body>
+</html>
