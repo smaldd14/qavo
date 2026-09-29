@@ -178,7 +178,10 @@ export async function serveDriver(paths: DriverPaths, options: DriverOptions) {
 
   await mkdir(paths.dir, { recursive: true, mode: 0o700 });
   await rm(paths.socket, { force: true });
-  await new Promise<void>((resolve) => server.listen(paths.socket, resolve));
+  await new Promise<void>((resolve, reject) => server.once("error", reject).listen(paths.socket, resolve)).catch(async (error: unknown) => {
+    await browser.close();
+    throw new DriverError("start_failed", `Could not listen on ${paths.socket}: ${messageOf(error)}`, "Run `qavo browser doctor`.");
+  });
   await writeFile(paths.state, JSON.stringify({ pid: process.pid, startedAt, options }), { mode: 0o600 });
   resetIdle();
 }

@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { existsSync, openSync, closeSync } from "node:fs";
+import { createRequire } from "node:module";
 import { mkdir, readFile, rm } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { fileURLToPath } from "node:url";
@@ -136,7 +137,8 @@ export async function doctor(paths: DriverPaths) {
     await browser.close();
   } catch (error) {
     const detail = error instanceof Error ? error.message.split("\n")[0]! : String(error);
-    checks.push({ name: "chromium", ok: false, detail, fix: "Run `pnpm exec playwright-core install chromium`." });
+    const { version } = createRequire(import.meta.url)("playwright-core/package.json") as { version: string };
+    checks.push({ name: "chromium", ok: false, detail, fix: `Run \`npx -y playwright-core@${version} install chromium\`. On Linux, add --with-deps.` });
   }
 
   const status = await call(paths, { command: "status" }, 5_000).catch(() => undefined);

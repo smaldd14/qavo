@@ -15,6 +15,8 @@ export class DriverError extends Error {
 }
 
 const NAME = /^[A-Za-z0-9_-]{1,40}$/;
+/** macOS allows 104 bytes for a Unix socket path, including the final NUL. Linux allows 108. */
+const MAX_SOCKET_PATH_BYTES = 103;
 
 /** The driver's directory: `$QAVO_HOME/drivers/<name>/`, where QAVO_HOME defaults to `~/.qavo`. */
 export function driverPaths(name: string, env: NodeJS.ProcessEnv = process.env) {
@@ -22,7 +24,12 @@ export function driverPaths(name: string, env: NodeJS.ProcessEnv = process.env) 
     throw new DriverError("bad_name", `The driver name "${name}" is not valid.`, "Use 1 to 40 letters, digits, - or _.");
   }
   const dir = join(env.QAVO_HOME ?? join(homedir(), ".qavo"), "drivers", name);
-  return { name, dir, socket: join(dir, "driver.sock"), state: join(dir, "state.json"), log: join(dir, "driver.log"), screenshots: join(dir, "screenshots") };
+  const socket = join(dir, "driver.sock");
+  if (Buffer.byteLength(socket) > MAX_SOCKET_PATH_BYTES) {
+    throw new DriverError("path_too_long", `The driver socket path ${socket} is longer than the ${MAX_SOCKET_PATH_BYTES}-byte Unix limit.`,
+      "Set QAVO_HOME to a shorter directory, for example `export QAVO_HOME=/tmp/qavo`, or use a shorter --name.");
+  }
+  return { name, dir, socket, state: join(dir, "state.json"), log: join(dir, "driver.log"), screenshots: join(dir, "screenshots") };
 }
 export type DriverPaths = ReturnType<typeof driverPaths>;
 

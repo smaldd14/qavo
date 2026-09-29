@@ -123,6 +123,13 @@ describe("qavo browser", { timeout: 60_000 }, () => {
     expect(failed.json.error).toMatchObject({ message: expect.stringContaining("ERR_CONNECTION_REFUSED") });
   });
 
+  test("a socket path over the Unix limit fails with a hint, not a crash", async () => {
+    const longHome = join(home, "a".repeat(100));
+    const failed = await qavo(["start", `${server.url}/form.html`, "--name", "long"], { QAVO_HOME: longHome });
+    expect(failed).toMatchObject({ code: 1, json: { ok: false, error: { code: "path_too_long" } } });
+    expect(failed.json.error!.hint).toContain("QAVO_HOME");
+  });
+
   test("stop cleans up a driver that was killed", async () => {
     await qavo(["start", `${server.url}/form.html`, "--name", "crash"]);
     const dir = join(home, "drivers", "crash");
