@@ -4,14 +4,14 @@ qavo tests web apps in a real browser. It has two tools:
 
 | Tool | Who decides | Use it to | Needs |
 | --- | --- | --- | --- |
-| `qavo browser` | A coding agent (Claude Code, Cursor, Codex) or a human | Check a change in the running app, one command at a time | Node 24 and Chromium. No API key. |
-| `qavo run` | [Jev](https://docs.typesafe.ai) (TypeSafe System One) | Run saved scenarios in plain language and report `pass`, `fail`, `blocked`, or `unclear` | Node 24, Chromium, and a `TYPESAFE_API_KEY` |
+| `qavo browser` | A coding agent (Claude Code, Cursor, Codex) or a human | Check a change in the running app, one command at a time | Node 22 and Chromium. No API key. |
+| `qavo run` | [Jev](https://docs.typesafe.ai) (TypeSafe System One) | Run saved scenarios in plain language and report `pass`, `fail`, `blocked`, or `unclear` | Node 22, Chromium, and a `TYPESAFE_API_KEY` |
 
 The two tools share the same page reader and the same guards. Neither tool builds a CSS selector from model output. Each action goes through an element from a snapshot, and it is checked before the page gets any input.
 
 ## Install
 
-qavo needs [Node 24](https://nodejs.org) or later. Install it from GitHub:
+qavo needs [Node 22](https://nodejs.org) or later. Install it from GitHub:
 
 ```sh
 npm install -g github:smaldd14/qavo
@@ -155,7 +155,7 @@ With this file, `qavo browser start /work-orders` opens `http://localhost:5173/w
 | Problem | Fix |
 | --- | --- |
 | `qavo: command not found` | Run `npm install -g github:smaldd14/qavo`. Check that the npm global `bin` directory is on your `PATH`. |
-| `node_version` | Install Node 24 or later. |
+| `node_version` | Install Node 22 or later. |
 | `chromium` check fails in `doctor` | Run the command in its `fix`. |
 | `start_failed` | Check that the app runs at the URL. Read `~/.qavo/drivers/<name>/driver.log`. |
 | `path_too_long` | Set `QAVO_HOME` to a short directory, for example `export QAVO_HOME=/tmp/qavo`. |

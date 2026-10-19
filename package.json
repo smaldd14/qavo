@@ -20,7 +20,7 @@
     "CONTEXT.md"
   ],
   "engines": {
-    "node": ">=24"
+    "node": ">=22"
   },
   "scripts": {
     "qavo": "tsx src/cli.ts",

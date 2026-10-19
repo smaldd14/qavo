@@ -2,9 +2,9 @@
 import { register } from "tsx/esm/api";
 
 const nodeMajor = Number(process.versions.node.split(".")[0]);
-if (nodeMajor < 24) {
-  const message = `qavo needs Node 24 or later. This is Node ${process.versions.node}.`;
-  const error = { code: "node_version", message, hint: "Install Node 24 or later, for example with `nvm install 24`." };
+if (nodeMajor < 22) {
+  const message = `qavo needs Node 22 or later. This is Node ${process.versions.node}.`;
+  const error = { code: "node_version", message, hint: "Install Node 22 or later, for example with `nvm install 22`." };
   console.log(process.argv[2] === "browser" ? JSON.stringify({ ok: false, error }) : message);
   process.exit(1);
 }

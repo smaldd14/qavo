@@ -129,7 +129,7 @@ type Check = { name: string; ok: boolean; detail: string; fix?: string };
 export async function doctor(paths: DriverPaths) {
   const checks: Check[] = [];
   const [major] = process.versions.node.split(".").map(Number);
-  checks.push({ name: "node", ok: major! >= 24, detail: process.versions.node, ...(major! < 24 && { fix: "Install Node 24 or later." }) });
+  checks.push({ name: "node", ok: major! >= 22, detail: process.versions.node, ...(major! < 22 && { fix: "Install Node 22 or later." }) });
   try {
     const { chromium } = await import("playwright-core");
     const browser = await chromium.launch();

@@ -186,7 +186,7 @@ The driver also blocks each main-frame navigation to a host outside `allowHosts`
 | `not_found` | `network <id>` with an id that the driver does not have. | Run `network` to list the ids. The driver keeps the last 500. |
 | `eval_failed` | The expression threw an error or is not one expression. | Read the message. Wrap statements in `(() => { ...; return value; })()`. |
 | `eval_timeout` | The expression did not finish in 10 seconds. | Do not wait on a promise that never resolves. Use `wait-settle` to wait for the page. |
-| `node_version` | Node is older than 24. | Install Node 24 or later. |
+| `node_version` | Node is older than 22. | Install Node 22 or later. |
 | `driver_error`, `error` | An unexpected failure. | Run `doctor`, and read `driver.log`. |
 
 ## Network
